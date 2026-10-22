@@ -1,10 +1,10 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (feature 2: adds the "Zoom" group: a checkbox and a slider that write "captionZoom" into the JSON; the Slider is now generic; the bubble size sliders from feature 1 are unchanged)
+// NOT NEW: existing file, changed (feature 4: adds the "Pop sound" group: a checkbox and the offset slider that write "popSound" into the JSON; features 1 and 2 are unchanged)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {BUBBLE_SCALE, CAPTION_ZOOM, validateSpec} from "../src/spec";
+import {BUBBLE_SCALE, CAPTION_ZOOM, POP_SOUND, validateSpec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 
 console.log("[Editor] 1. file loaded");
@@ -150,6 +150,16 @@ const Editor = () => {
     save({...obj, captionZoom: {enabled: zoomOn, percent: zoomPercent, seconds: zoomSeconds, ...patch}});
   };
 
+  // the pop sound: checkbox = enabled, slider = offsetSeconds (negative = earlier, positive = later)
+  const ps = obj?.popSound;
+  const popOn = !!ps && ps.enabled !== false; // popSound missing = off, present without "enabled" = on
+  const popOffset = typeof ps?.offsetSeconds === "number" && Number.isFinite(ps.offsetSeconds) ? ps.offsetSeconds : POP_SOUND.defaultOffset;
+  const setPop = (patch: {enabled?: boolean; offsetSeconds?: number}) => {
+    if (!obj) return;
+    console.log(`[Editor] pop sound: ${JSON.stringify(patch)}`);
+    save({...obj, popSound: {enabled: popOn, offsetSeconds: popOffset, ...patch}});
+  };
+
   const valid = errors.length === 0;
   console.log(`[Editor] render: json ${valid ? "valid" : "invalid"}, video "${videoName}", picture "${pictureName}"`);
   return (
@@ -225,6 +235,15 @@ const Editor = () => {
                 <span>Small zoom at every normal bubble (in, out, in, out...)</span>
               </label>
               <Slider label="Zoom amount" value={zoomPercent} min={CAPTION_ZOOM.min} max={CAPTION_ZOOM.max} step={CAPTION_ZOOM.step} show={(v) => `${v.toFixed(1)}%`} onChange={(v) => setZoom({percent: v})} disabled={!obj || !zoomOn} />
+            </div>
+
+            <div className="group">
+              <span className="gtitle">Pop sound (saved in the JSON)</span>
+              <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
+                <input type="checkbox" checked={popOn} disabled={!obj} onChange={(e) => setPop({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
+                <span>Play the bubble pop sound (needs the mp3 in the public folder)</span>
+              </label>
+              <Slider label="Sound offset" value={popOffset} min={POP_SOUND.min} max={POP_SOUND.max} step={POP_SOUND.step} show={(v) => `${v > 0 ? "+" : ""}${Math.round(v * 1000)} ms`} onChange={(v) => setPop({offsetSeconds: v})} disabled={!obj || !popOn} />
             </div>
 
             <div className="group">

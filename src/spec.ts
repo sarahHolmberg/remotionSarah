@@ -1,5 +1,5 @@
 // src/spec.ts
-// NOT NEW: existing file, changed (feature 2: "captionZoom" gets an optional "enabled" switch; CAPTION_ZOOM holds the limits of the zoom slider; "bubbleScale" from feature 1 is unchanged)
+// NOT NEW: existing file, changed (feature 4: adds the optional "popSound" {enabled, offsetSeconds} and POP_SOUND, the limits of the sound offset slider in the editor tab; features 1 to 3 are unchanged)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -35,6 +35,8 @@ export type Spec = {
   zooms: Zoom[];
   ending: {type: "fadeToBlack"; seconds: number}[];
   captionZoom?: {enabled?: boolean; percent: number; seconds: number}; // optional: at every NORMAL bubble the camera nudges in, then out, then in... (enabled missing = on, false = off)
+  nameZoom?: {percent: number; seconds: number}; // optional: extra zoom (with blur) toward the name bubble while it is on screen; percent 0 = off
+  popSound?: {enabled?: boolean; offsetSeconds: number}; // optional: the bubble pop sound at the first bubble; offset moves it earlier (-) or later (+); enabled missing = on, false = off
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
 };
 
@@ -43,6 +45,12 @@ export const BUBBLE_SCALE = {min: 0.7, max: 2.5, step: 0.05, default: 1};
 
 // Limits and start values of the zoom slider / checkbox (the editor tab uses the same numbers)
 export const CAPTION_ZOOM = {min: 0.5, max: 10, step: 0.5, defaultPercent: 3, defaultSeconds: 0.3};
+
+// Limits and start values of the name zoom slider (the preview tab uses the same numbers)
+export const NAME_ZOOM = {min: 0, max: 15, step: 0.5, defaultPercent: 4, defaultSeconds: 0.5};
+
+// Limits of the pop sound offset slider (the editor tab uses the same numbers)
+export const POP_SOUND = {min: -0.5, max: 0.5, step: 0.01, defaultOffset: 0};
 
 const FONTS = ["Comic Neue"]; // fonts the renderer knows
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
@@ -67,7 +75,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -184,6 +192,26 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
       if (s.captionZoom.enabled !== undefined && typeof s.captionZoom.enabled !== "boolean") errors.push("captionZoom.enabled: must be true or false");
       num(s.captionZoom.percent, "captionZoom.percent", 0.1, 20);
       num(s.captionZoom.seconds, "captionZoom.seconds", 0.05, 2);
+    }
+  }
+
+  // nameZoom (optional)
+  if (s.nameZoom !== undefined) {
+    if (!isObj(s.nameZoom)) errors.push("nameZoom: must be an object");
+    else {
+      keys(s.nameZoom, ["percent", "seconds"], "nameZoom");
+      num(s.nameZoom.percent, "nameZoom.percent", 0, 30);
+      num(s.nameZoom.seconds, "nameZoom.seconds", 0.05, 3);
+    }
+  }
+
+  // popSound (optional)
+  if (s.popSound !== undefined) {
+    if (!isObj(s.popSound)) errors.push('popSound: must be an object like {"enabled": true, "offsetSeconds": 0}');
+    else {
+      keys(s.popSound, ["enabled", "offsetSeconds"], "popSound");
+      if (s.popSound.enabled !== undefined && typeof s.popSound.enabled !== "boolean") errors.push("popSound.enabled: must be true or false");
+      num(s.popSound.offsetSeconds, "popSound.offsetSeconds", POP_SOUND.min, POP_SOUND.max);
     }
   }
 

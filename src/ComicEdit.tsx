@@ -1,8 +1,8 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (feature 2: "captionZoom" now zooms toward each NORMAL bubble, alternating in / out, and can be switched off with "enabled": false; the name bubble no longer triggers it)
+// NOT NEW: existing file, changed (feature 4: plays the bubble pop sound when the first bubble pops open; "popSound.offsetSeconds" moves it; features 1 to 3 are unchanged)
 
 import {useMemo} from "react";
-import {AbsoluteFill, Easing, Img, interpolate, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
+import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
 import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the JSON can name for now
 import {cellRect} from "./gridCell";
 import {blobAt, schedule, type Blob} from "./bubbleTimeline";
@@ -18,6 +18,16 @@ const BUBBLE_W_SCALE = 1.3; // wider bubble around the same text (1 = tight)
 const BUBBLE_W_PAD = 0.7; // extra half-width, in text sizes
 const BUBBLE_H_SCALE = 1.3; // taller bubble around the same text (1 = tight)
 const BUBBLE_H_PAD = 0.55; // extra half-height, in text sizes
+
+// ---- POP SOUND (change here) ----
+const POP_FILE = "universfield-bubble-pop-05-323639.mp3"; // file in /public
+const POP_HIT = 0.26; // seconds into the file where the actual "pop" sits (it starts with a short swell, the pop is at about 0.26s)
+const POP_VOLUME = 1; // 0 to 1
+
+// ---- NAME EFFECT: blur, then zoom, hold, reset (change here) ----
+const NAME_BLUR = 0.006; // how blurry the video gets behind the name, as a fraction of the video width (1080px wide = about 6.5px)
+const NAME_BLUR_SECONDS = 0.25; // the video blurs first, over this time; the zoom starts right after
+const NAME_RESET_MARGIN = 0.05; // seconds: blur and zoom are back to normal this long before the next text starts
 
 // ---- NAME BUBBLE (the caption with this id gets a picture bubble on top and big words below) ----
 const NAME_BUBBLE_ID = 1;
@@ -140,38 +150,76 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const live = [...geo.zooms].reverse().find((z) => t >= z.from) ?? geo.zooms[0];
   const origin = live ? live.origin : {x: width / 2, y: height / 2};
 
-  // captionZoom: the camera nudges at every NORMAL bubble (not the name bubble), alternating in, out, in, out...
-  // "in" zooms toward that bubble. "out" goes back to normal size while the focus glides from the previous bubble to this one.
-  // It is drawn as translate + scale around a focus point f (x' = f + s * (x - f)), so a new focus never makes the picture jump.
-  let pulse = {s: 1, x: 0, y: 0};
+  // The camera moves are a list of steps in time order. Every step takes the camera from the scale the last step left it at to its own scale.
+  //  - name effect (JSON "nameZoom"; the slider is in the preview tab): the video blurs, then zooms in toward the name bubble and holds;
+  //    blur and zoom reset together, finishing just before the next text starts
+  //  - captionZoom: at every NORMAL bubble (not the name bubble), alternating in, out, in, out...
+  // A step is drawn as translate + scale around a focus point f (x' = f + s * (x - f)), so a new focus never makes the picture jump.
+  type Step = {from: number; dur: number; to: number; f: P};
+  const steps: Step[] = [];
+  const nz = spec.nameZoom;
+  const nameK = captions.findIndex((c) => c.id === NAME_BUBBLE_ID);
+  let nameFx: {blurStart: number; resetStart: number; resetDur: number} | null = null;
+  if (nz && nz.percent > 0 && nameK >= 0) {
+    const g = geo.items[nameK];
+    const f = g.pic ? {x: (g.c.x + g.pic.x) / 2, y: (g.c.y + g.pic.y) / 2} : g.c; // between the words bubble and its picture circle
+    const blurStart = Math.max(0, captions[nameK].from - tm.firstOpenSeconds); // the name appears: the video starts to blur
+    const zoomStart = blurStart + NAME_BLUR_SECONDS; // then the zoom
+    const zoomEnd = zoomStart + nz.seconds;
+    const nextFrom = captions[nameK + 1]?.from;
+    const resetEnd = nextFrom !== undefined ? nextFrom - NAME_RESET_MARGIN : sch[nameK].out + nz.seconds; // back to normal before the next text
+    const resetStart = Math.max(zoomEnd, resetEnd - nz.seconds);
+    const resetDur = Math.max(0.05, Math.min(nz.seconds, resetEnd - resetStart));
+    steps.push({from: zoomStart, dur: nz.seconds, to: 1 + nz.percent / 100, f});
+    steps.push({from: resetStart, dur: resetDur, to: 1, f});
+    nameFx = {blurStart, resetStart, resetDur};
+    if (frame === Math.round(blurStart * fps)) console.log(`[Comic] name effect: blur ${blurStart.toFixed(3)}s, zoom ${zoomStart.toFixed(3)}-${zoomEnd.toFixed(3)}s (x${(1 + nz.percent / 100).toFixed(3)}), reset ${resetStart.toFixed(3)}-${(resetStart + resetDur).toFixed(3)}s`);
+  }
   const cz = spec.captionZoom;
   if (cz && cz.enabled !== false) {
-    const p = cz.percent / 100;
-    const normal = captions.map((cap, k) => ({cap, k})).filter(({cap}) => cap.id !== NAME_BUBBLE_ID);
-    let cur = -1; // the last normal bubble that has started
-    normal.forEach(({cap}, j) => {
-      if (t >= cap.from) cur = j;
-      if (frame === Math.round(cap.from * fps)) console.log(`[Comic] #${cap.id} camera ${j % 2 === 0 ? "in" : "out"} ${cz.percent}% toward this bubble`);
+    let up = true; // the first normal bubble zooms in, the next one out, ...
+    captions.forEach((cap, k) => {
+      if (cap.id === NAME_BUBBLE_ID) return;
+      steps.push({from: cap.from, dur: cz.seconds, to: up ? 1 + cz.percent / 100 : 1, f: geo.items[k].c});
+      up = !up;
     });
-    if (cur >= 0) {
-      const {cap, k} = normal[cur];
-      const nextFrom = normal[cur + 1]?.cap.from ?? Infinity;
-      const dur = Math.max(Math.min(cz.seconds, nextFrom - cap.from), 0.01); // never longer than the time to the next normal bubble
-      const u = interpolate(t, [cap.from, cap.from + dur], [0, 1], {...clamp, easing: Easing.inOut(Easing.cubic)});
-      const here = geo.items[k].c;
-      let sc: number;
-      let f: P;
-      if (cur % 2 === 0) {
-        sc = 1 + p * u; // in, toward this bubble
-        f = here;
-      } else {
-        const prev = geo.items[normal[cur - 1].k].c;
-        sc = 1 + p * (1 - u); // out; the focus glides from the previous bubble to this one
-        f = {x: prev.x + (here.x - prev.x) * u, y: prev.y + (here.y - prev.y) * u};
-      }
-      pulse = {s: sc, x: f.x * (1 - sc), y: f.y * (1 - sc)};
-    }
   }
+  steps.sort((a, b) => a.from - b.from);
+
+  let pulse = {s: 1, x: 0, y: 0};
+  let cur = -1; // the last step that has started
+  steps.forEach((st, i) => {
+    if (t >= st.from) cur = i;
+    if (frame === Math.round(st.from * fps)) console.log(`[Comic] camera step ${i + 1}/${steps.length} at ${st.from.toFixed(3)}s: to x${st.to.toFixed(3)}`);
+  });
+  if (cur >= 0) {
+    const st = steps[cur];
+    const prev = steps[cur - 1];
+    const a = prev ? prev.to : 1; // the scale the camera is at when this step starts
+    const dur = Math.max(Math.min(st.dur, (steps[cur + 1]?.from ?? Infinity) - st.from), 0.01); // never longer than the time to the next step
+    const raw = Math.min(1, Math.max(0, (t - st.from) / dur));
+    const e = Easing.inOut(Easing.cubic)(raw);
+    const sc = a + (st.to - a) * e;
+    // zooming in: the focus is this step's own spot. Zooming out: the focus glides from the last step's spot to this one's.
+    const f = st.to > a || !prev ? st.f : {x: prev.f.x + (st.f.x - prev.f.x) * e, y: prev.f.y + (st.f.y - prev.f.y) * e};
+    pulse = {s: sc, x: f.x * (1 - sc), y: f.y * (1 - sc)};
+  }
+
+  // the blur behind the name: ramps up first, stays while the zoom is held, ramps down together with the zoom reset
+  let blurPx = 0;
+  if (nameFx) {
+    const ease = {...clamp, easing: Easing.inOut(Easing.cubic)};
+    const up = interpolate(t, [nameFx.blurStart, nameFx.blurStart + NAME_BLUR_SECONDS], [0, 1], ease);
+    const down = interpolate(t, [nameFx.resetStart, nameFx.resetStart + nameFx.resetDur], [1, 0], ease);
+    blurPx = width * NAME_BLUR * Math.min(up, down);
+  }
+
+  // pop sound: the swell of the file plays while the ball inflates and the pop lands at the moment the ball is complete and bursts open into the bubble
+  // (same moment as in blobAt: first words minus firstOpenSeconds). The offset slider in the editor moves it. Audio starts on whole frames.
+  const pop = spec.popSound;
+  const popOn = !!pop && pop.enabled !== false;
+  const popFrame = Math.round((captions[0].from - tm.firstOpenSeconds + (pop?.offsetSeconds ?? 0) - POP_HIT) * fps); // frame where the FILE starts (can be before 0)
+  if (popOn && frame === Math.max(0, popFrame)) console.log(`[Comic] pop sound: file starts at frame ${popFrame}, the pop itself at ${((popFrame / fps) + POP_HIT).toFixed(3)}s (offset ${pop?.offsetSeconds ?? 0}s)`);
 
   const fade = spec.ending.find((e) => e.type === "fadeToBlack");
   const fadeStart = durationInFrames - (fade ? fade.seconds * fps : 0);
@@ -265,7 +313,12 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
 
   return (
     <AbsoluteFill style={{background: "black"}}>
-      <AbsoluteFill style={{opacity: endFade}}>
+      {popOn && (
+        <Sequence from={Math.max(0, popFrame)}>
+          <Audio src={staticFile(POP_FILE)} startFrom={Math.max(0, -popFrame)} volume={POP_VOLUME} />
+        </Sequence>
+      )}
+      <AbsoluteFill style={{opacity: endFade, filter: blurPx > 0.05 ? `blur(${blurPx.toFixed(2)}px)` : undefined}}>
         <AbsoluteFill style={{transform: `translate(${pulse.x}px, ${pulse.y}px) scale(${pulse.s})`, transformOrigin: "0 0"}}>
           <AbsoluteFill style={{transform: `scale(${zoom})`, transformOrigin: `${origin.x}px ${origin.y}px`}}>
             <OffthreadVideo src={spec.videoSrc ?? staticFile(spec.video.file)} style={{width, height}} />

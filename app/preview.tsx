@@ -1,5 +1,5 @@
 // app/preview.tsx
-// NOT NEW: existing file, changed (reads the picture picked in the editor and passes it to ComicEdit; the export also uploads the picture)
+// NOT NEW: existing file, changed (feature 3: adds the "Name zoom" slider; its value goes into the Player and into the export as "nameZoom"; the picture handling is unchanged)
 
 // Tab 2: plays the video with the captions on top (the same ComicEdit that Remotion renders), updates live when the editor tab sends new JSON, a new video or a new picture.
 import {Component, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -8,7 +8,7 @@ import {Player} from "@remotion/player";
 import {getVideoMetadata} from "@remotion/media-utils";
 import {staticFile} from "remotion";
 import {ComicEdit} from "../src/ComicEdit";
-import {validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
+import {NAME_ZOOM, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, loadPicture, loadVideo, STORE_KEY} from "./shared";
 
 console.log("[Preview] 1. file loaded, all imports resolved");
@@ -36,6 +36,8 @@ class Boundary extends Component<{children: ReactNode}, {err: Error | null}> {
     return this.props.children;
   }
 }
+
+const NAME_ZOOM_KEY = "comic-name-zoom"; // the slider value is kept in the browser, so a reload keeps it
 
 type Meta = {w: number; h: number; seconds: number};
 type Uploaded = {url: string; name: string};
@@ -74,6 +76,16 @@ const Preview = () => {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [metaErr, setMetaErr] = useState("");
   const [shown, setShown] = useState<{spec: Spec; meta: Meta; src: string} | null>(null); // last good version stays on screen
+  // Name zoom slider: null = not touched yet, then the JSON's "nameZoom" (or the default) is used
+  const [nameZoomPct, setNameZoomPct] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem(NAME_ZOOM_KEY);
+      const n = v === null ? NaN : Number(v);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  });
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
   const [renderLog, setRenderLog] = useState<string[]>([]);
@@ -148,6 +160,21 @@ const Preview = () => {
     };
   }, [src]);
 
+  // the spec with the slider applied: this is what the Player shows and what the export sends
+  const withNameZoom = (sp: Spec): Spec => ({
+    ...sp,
+    nameZoom: {percent: nameZoomPct ?? sp.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: sp.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
+  });
+  const moveNameZoom = (v: number) => {
+    console.log(`[Preview] name zoom slider: ${v}%`);
+    setNameZoomPct(v);
+    try {
+      localStorage.setItem(NAME_ZOOM_KEY, String(v));
+    } catch (e) {
+      console.error("[Preview] cannot save the name zoom", e);
+    }
+  };
+
   const videoErrors = parsed.spec && meta ? validateAgainstVideo(parsed.spec, meta.seconds) : [];
   const errors = [...parsed.errors, ...videoErrors, ...(metaErr ? [metaErr] : [])];
   if (errors.length) console.log(`[Preview] ${errors.length} problem(s) blocking an update:`, errors);
@@ -164,7 +191,7 @@ const Preview = () => {
     if (!shown || exporting) return;
     setExporting(true);
     setRenderLog([]);
-    let spec = shown.spec;
+    let spec = withNameZoom(shown.spec);
     try {
       if (uploaded) {
         setExportMsg("Uploading the video...");
@@ -248,6 +275,11 @@ const Preview = () => {
           {errors.length > 1 ? ` (+${errors.length - 1} more, see the editor tab)` : ""}
         </div>
       )}
+      <div style={{display: "flex", gap: 10, alignItems: "center", fontSize: 13}}>
+        <span>Name zoom</span>
+        <input type="range" min={NAME_ZOOM.min} max={NAME_ZOOM.max} step={NAME_ZOOM.step} value={nameZoomPct ?? spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent} onChange={(e) => moveNameZoom(Number(e.target.value))} style={{width: 180}} />
+        <span style={{width: 48}}>{(nameZoomPct ?? spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent).toFixed(1)}%</span>
+      </div>
       <div style={{display: "flex", gap: 12, alignItems: "center"}}>
         <button onClick={exportVideo} disabled={exporting} style={{padding: "8px 16px", fontSize: 14, cursor: exporting ? "wait" : "pointer"}}>
           {exporting ? "Exporting..." : "Export video"}
@@ -261,7 +293,7 @@ const Preview = () => {
         <Player
           key={`${shown.src}-${m.w}x${m.h}-${spec.fps}`}
           component={ComicEdit}
-          inputProps={{...spec, videoSrc: shown.src, pictureSrc: picture?.url}}
+          inputProps={{...withNameZoom(spec), videoSrc: shown.src, pictureSrc: picture?.url}}
           durationInFrames={Math.ceil(m.seconds * spec.fps)}
           fps={spec.fps}
           compositionWidth={m.w}
