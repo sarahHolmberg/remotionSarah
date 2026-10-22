@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "video": {"file": "xnatasjasanfeld.mp4"},
+  "grid": {"size": 15},
+  "fps": 30,
+  "style": {
+    "type": "comic-bubble",
+    "fill": "#FFFFFF",
+    "ink": "#000000",
+    "font": {"family": "Comic Neue", "weight": 700, "sizeCells": 0.4, "capitals": true},
+    "outlineCells": 0.05,
+    "ballRadiusCells": 0.25,
+    "tail": {"enabled": true, "defaultTarget": "H8", "maxLengthCells": 1.8, "reach": 0.6}
+  },
+  "timing": {
+    "exitFadeSeconds": 0.05,
+    "gapBeforeNextSeconds": 0.5,
+    "lastHoldSeconds": 0.6,
+    "firstBallPopSeconds": 0.15,
+    "firstOpenSeconds": 0.15,
+    "endCloseSeconds": 0.15,
+    "endShrinkSeconds": 0.15,
+    "split": {"close": 0.25, "travel": 0.5, "open": 0.25}
+  },
+  "captions": [
+    {"id": 1, "text": "Natasja Sandfeld", "from": 0.893, "to": 2.103, "cells": ["J7"], "mode": "center", "out": "default"},
+    {"id": 2, "text": "swipe", "from": 3.230, "to": 3.433, "cells": ["J8"], "mode": "center", "out": "default"},
+    {"id": 3, "text": "kick leg up", "from": 3.551, "to": 3.887, "cells": ["K11"], "mode": "center", "out": "default"},
+    {"id": 4, "text": "turn head", "from": 4.085, "to": 4.433, "cells": ["E6"], "mode": "center", "out": "default"},
+    {"id": 5, "text": "hands move up", "from": 4.821, "to": 5.058, "cells": ["C8"], "mode": "center", "out": "default"},
+    {"id": 6, "text": "half turn", "from": 5.785, "to": 6.220, "cells": ["I6"], "mode": "center", "out": "default"}
+  ],
+  "zooms": [
+    {"from": 3.550, "to": 3.870, "percent": 5, "cells": ["G7", "J7", "G9", "J9"], "hold": true}
+  ],
+  "ending": [
+    {"type": "fadeToBlack", "seconds": 1}
+  ]
+}

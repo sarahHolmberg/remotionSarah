@@ -1,1 +1,3 @@
-# remotionSarah
+- add an easy copy button for usernames in video vault
+- make a small zoom towards each spoken action
+- add name the file the taget person name in the instrctions for voiceediting
