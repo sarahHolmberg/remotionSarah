@@ -1,12 +1,12 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (chaining removed again; adds the NAME BUBBLE for caption id 1; bubble and text size constants at the top; optional "captionZoom": the camera nudges in/out at every caption)
+// NOT NEW: existing file, changed (the bubble size sliders ("bubbleScale") now scale the WHOLE bubble: words, bubble and picture circle together; the tail tip stays on the exact spot it points to at normal size)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Easing, Img, interpolate, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
 import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the JSON can name for now
 import {cellRect} from "./gridCell";
 import {blobAt, schedule, type Blob} from "./bubbleTimeline";
-import type {Spec} from "./spec";
+import type {Caption, Spec} from "./spec";
 
 const {fontFamily} = loadFont("normal", {weights: ["700"]});
 const ADV = 0.66; // average capital-letter width as a fraction of font size (only sizes the bubble)
@@ -22,7 +22,6 @@ const BUBBLE_H_PAD = 0.55; // extra half-height, in text sizes
 // ---- NAME BUBBLE (the caption with this id gets a picture bubble on top and big words below) ----
 const NAME_BUBBLE_ID = 1;
 const NAME_TEXT_SCALE = 1.6; // its words are this many times bigger than normal text; bigger than the bubble = sticks out
-const NAME_BUBBLE_GROW = 1; // 1.2 = its words bubble is 20% bigger (the words keep their size)
 const NAME_TEXT_TILT = -4; // degrees, 0 = straight
 const NAME_PIC_CELLS = 1.1; // picture bubble radius, in grid cells
 const NAME_PIC_LEFT = 0.35; // picture bubble sits this far left of the center (fraction of the words bubble half-width, negative = right)
@@ -50,31 +49,34 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const clamp = {extrapolateLeft: "clamp", extrapolateRight: "clamp"} as const;
   const {style, timing: tm, captions, zooms} = spec; // pieces, not "spec" itself: the props object is new on every frame, its pieces are not
   const N = spec.grid.size;
+  const normalScale = spec.bubbleScale?.normal ?? 1; // size slider of the normal bubbles (1 = as before); the whole bubble grows, words included
+  const nameScale = spec.bubbleScale?.name ?? 1; // size slider of the name bubble; words, bubble and picture circle grow together
 
   const sch = useMemo(() => schedule(captions, tm), [captions, tm]);
   const pictureUrl = spec.pictureSrc ?? (spec.picture ? staticFile(spec.picture.file) : undefined);
+  if (frame === 0) console.log(`[Comic] bubble size: normal x${normalScale}, name x${nameScale}`);
   if (frame === 0) console.log(`[Comic] name bubble = caption #${NAME_BUBBLE_ID}, picture: ${pictureUrl ? (spec.pictureSrc ? "picked in the editor" : `public/${spec.picture?.file}`) : "NOT set (the top bubble stays empty)"}`);
 
   const geo = useMemo(() => {
     const cw = width / N;
-    const font = style.font.sizeCells * cw;
-    const lineH = font * 1.15;
     const margin = cw * 0.3;
-    const items = captions.map((cap) => {
+
+    // One bubble at a given size. scale 1 = the original size. Words, bubble and picture circle all grow together around the center.
+    const build = (cap: Caption, scale: number, log: boolean) => {
+      const font = style.font.sizeCells * cw * scale;
+      const lineH = font * 1.15;
       let c = centerOf(cap.cells, width, height, N);
-      const tr = cellRect(cap.tail ?? style.tail.defaultTarget, width, height, N);
       const lines = (style.font.capitals ? cap.text.toUpperCase() : cap.text).split(" "); // one word per line
       const longest = Math.max(...lines.map((l) => l.length));
       const isName = cap.id === NAME_BUBBLE_ID;
-      const bg = isName ? NAME_BUBBLE_GROW : 1;
-      const rx = (((longest * font * ADV) / 2) * BUBBLE_W_SCALE + font * BUBBLE_W_PAD) * bg; // bubble half-width
-      const ry = (((lines.length * lineH) / 2) * BUBBLE_H_SCALE + font * BUBBLE_H_PAD) * bg; // bubble half-height
+      const rx = ((longest * font * ADV) / 2) * BUBBLE_W_SCALE + font * BUBBLE_W_PAD; // bubble half-width
+      const ry = ((lines.length * lineH) / 2) * BUBBLE_H_SCALE + font * BUBBLE_H_PAD; // bubble half-height
       const fs = isName ? font * NAME_TEXT_SCALE : font; // text size in px
       const lh = isName ? lineH * NAME_TEXT_SCALE : lineH; // distance between the lines
 
       let pic: {x: number; y: number; rp: number} | undefined; // the picture bubble of the name bubble
       if (isName) {
-        const rp = NAME_PIC_CELLS * cw;
+        const rp = NAME_PIC_CELLS * cw * scale;
         const textHalf = (longest * fs * ADV) / 2; // the big words can be wider than the bubble
         let px = c.x - rx * NAME_PIC_LEFT;
         let py = c.y - ry - rp * NAME_PIC_UP;
@@ -88,9 +90,26 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
         px += dx;
         py += dy;
         pic = {x: px, y: py, rp};
-        console.log(`[Comic] #${cap.id} NAME BUBBLE: words bubble ${(rx * 2).toFixed(0)}x${(ry * 2).toFixed(0)}px at ${c.x.toFixed(0)},${c.y.toFixed(0)}, text ${fs.toFixed(0)}px (normal ${font.toFixed(0)}px), picture circle r=${rp.toFixed(0)}px at ${px.toFixed(0)},${py.toFixed(0)}${dx || dy ? `, moved ${dx.toFixed(0)},${dy.toFixed(0)} to fit the frame` : ""}`);
-      } else console.log(`[Comic] #${cap.id} "${cap.text}" at ${cap.cells.join("+")} bubble ${(rx * 2).toFixed(0)}x${(ry * 2).toFixed(0)}px`);
-      return {c, tail: {x: tr.cx, y: tr.cy}, rx, ry, lines, fs, lh, pic};
+        if (log) console.log(`[Comic] #${cap.id} NAME BUBBLE x${scale}: words bubble ${(rx * 2).toFixed(0)}x${(ry * 2).toFixed(0)}px at ${c.x.toFixed(0)},${c.y.toFixed(0)}, text ${fs.toFixed(0)}px, picture circle r=${rp.toFixed(0)}px at ${px.toFixed(0)},${py.toFixed(0)}${dx || dy ? `, moved ${dx.toFixed(0)},${dy.toFixed(0)} to fit the frame` : ""}`);
+      } else if (log) console.log(`[Comic] #${cap.id} "${cap.text}" at ${cap.cells.join("+")} x${scale} bubble ${(rx * 2).toFixed(0)}x${(ry * 2).toFixed(0)}px`);
+      return {c, rx, ry, lines, fs, lh, pic};
+    };
+
+    const items = captions.map((cap) => {
+      const g = build(cap, cap.id === NAME_BUBBLE_ID ? nameScale : normalScale, true);
+
+      // Where the tail tip points: worked out on the bubble at its ORIGINAL size (scale 1), then kept fixed.
+      // A bigger bubble reaches over to the same spot; a smaller one stretches its tail to it.
+      const ref = build(cap, 1, false);
+      const tr = cellRect(cap.tail ?? style.tail.defaultTarget, width, height, N);
+      const dx = tr.cx - ref.c.x;
+      const dy = tr.cy - ref.c.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const phi = Math.atan2(ref.rx * dy, ref.ry * dx); // point of the ellipse that faces the target
+      const base = {x: ref.c.x + ref.rx * Math.cos(phi), y: ref.c.y + ref.ry * Math.sin(phi)};
+      const L = Math.max(0, Math.min(dist * style.tail.reach, cw * style.tail.maxLengthCells));
+      const tip0 = {x: base.x + (dx / dist) * L, y: base.y + (dy / dist) * L};
+      return {...g, tip0};
     });
     // smooth curve from each bubble to the next: control point bows to the upper side
     const hops = items.slice(0, -1).map((a, k) => {
@@ -105,7 +124,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     });
     const zoomList = [...zooms].sort((a, b) => a.from - b.from).map((z) => ({...z, origin: centerOf(z.cells, width, height, N)}));
     return {cw, items, hops, zooms: zoomList};
-  }, [captions, style, zooms, N, width, height]);
+  }, [captions, style, zooms, N, width, height, normalScale, nameScale]);
 
   // key moments, logged once each
   captions.forEach((cap, k) => {
@@ -159,24 +178,28 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
         pic = <circle cx={g.c.x + (g.pic.x - g.c.x) * b.o} cy={g.c.y + (g.pic.y - g.c.y) * b.o} r={rp} fill={color} />;
       }
 
-      // comic tail: a thin curved spike from the bubble edge toward the target cell, grows as the bubble opens
+      // comic tail: a thin curved spike from the bubble edge to a FIXED tip (the spot it points to at the original size), grows as the bubble opens
       let tail = null;
       if (style.tail.enabled && b.o > 0.02) {
-        const dx = g.tail.x - g.c.x;
-        const dy = g.tail.y - g.c.y;
+        const dx = g.tip0.x - g.c.x;
+        const dy = g.tip0.y - g.c.y;
         const dist = Math.hypot(dx, dy) || 1;
-        const d = {x: dx / dist, y: dy / dist};
-        const phi = Math.atan2(g.rx * dy, g.ry * dx); // point of the ellipse that faces the target
+        const phi = Math.atan2(g.rx * dy, g.ry * dx); // point of the ellipse that faces the tip
         const onEllipse = (a: number, k: number): P => ({x: g.c.x + k * g.rx * Math.cos(a), y: g.c.y + k * g.ry * Math.sin(a)});
         const base = onEllipse(phi, 1);
-        const b1 = onEllipse(phi - 0.35, 0.95); // base corners sit slightly inside, so the outline opens into the tail
-        const b2 = onEllipse(phi + 0.35, 0.95);
-        const L = Math.max(0, Math.min(dist * style.tail.reach, geo.cw * style.tail.maxLengthCells)) * b.o * b.sc;
-        const tip = {x: base.x + d.x * L, y: base.y + d.y * L};
-        const n = {x: -d.y, y: d.x};
-        const c1 = {x: (b1.x + tip.x) / 2 + n.x * L * 0.18, y: (b1.y + tip.y) / 2 + n.y * L * 0.18};
-        const c2 = {x: (b2.x + tip.x) / 2 + n.x * L * 0.18, y: (b2.y + tip.y) / 2 + n.y * L * 0.18};
-        tail = <path d={`M ${b1.x} ${b1.y} Q ${c1.x} ${c1.y} ${tip.x} ${tip.y} Q ${c2.x} ${c2.y} ${b2.x} ${b2.y} Z`} fill={color} stroke={color} strokeWidth={2 * grow} strokeLinejoin="round" />;
+        const gap = Math.hypot(g.tip0.x - base.x, g.tip0.y - base.y) || 1;
+        const reaches = dist > Math.hypot(base.x - g.c.x, base.y - g.c.y); // false when the bubble has grown over the tip: then no tail shows
+        const L = reaches ? gap * b.o * b.sc : 0;
+        if (L > 0.5) {
+          const d = {x: (g.tip0.x - base.x) / gap, y: (g.tip0.y - base.y) / gap};
+          const b1 = onEllipse(phi - 0.35, 0.95); // base corners sit slightly inside, so the outline opens into the tail
+          const b2 = onEllipse(phi + 0.35, 0.95);
+          const tip = {x: base.x + d.x * L, y: base.y + d.y * L};
+          const n = {x: -d.y, y: d.x};
+          const c1 = {x: (b1.x + tip.x) / 2 + n.x * L * 0.18, y: (b1.y + tip.y) / 2 + n.y * L * 0.18};
+          const c2 = {x: (b2.x + tip.x) / 2 + n.x * L * 0.18, y: (b2.y + tip.y) / 2 + n.y * L * 0.18};
+          tail = <path d={`M ${b1.x} ${b1.y} Q ${c1.x} ${c1.y} ${tip.x} ${tip.y} Q ${c2.x} ${c2.y} ${b2.x} ${b2.y} Z`} fill={color} stroke={color} strokeWidth={2 * grow} strokeLinejoin="round" />;
+        }
       }
       return (
         <>

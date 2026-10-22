@@ -1,10 +1,10 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (adds the picture picker for the name bubble; same XP look)
+// NOT NEW: existing file, changed (adds the "Bubble size" group: two sliders, normal bubbles and name bubble; they write "bubbleScale" into the JSON; same XP look)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {validateSpec} from "../src/spec";
+import {BUBBLE_SCALE, validateSpec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 
 console.log("[Editor] 1. file loaded");
@@ -25,6 +25,24 @@ const check = (text: string): {errors: string[]; warnings: string[]} => {
     return {errors: [`JSON syntax: ${(e as Error).message}`], warnings: []};
   }
 };
+
+// A slider with its name on the left and its value on the right (XP look comes from the existing .row / .file classes)
+const Slider = ({label, value, onChange, disabled}: {label: string; value: number; onChange: (v: number) => void; disabled: boolean}) => (
+  <div className="row">
+    <span style={{width: 120}}>{label}</span>
+    <input
+      type="range"
+      min={BUBBLE_SCALE.min}
+      max={BUBBLE_SCALE.max}
+      step={BUBBLE_SCALE.step}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={{flex: 1, minWidth: 140, height: 32}}
+    />
+    <span className="file" style={{flex: "none", width: 64, textAlign: "center"}}>x{value.toFixed(2)}</span>
+  </div>
+);
 
 const Editor = () => {
   console.log("[Editor] 2. component rendering");
@@ -100,6 +118,26 @@ const Editor = () => {
     }
   };
 
+  // the JSON as an object (null while it is not readable): the sliders read from it and write into it
+  const obj: Record<string, any> | null = (() => {
+    try {
+      const o = JSON.parse(text);
+      return o && typeof o === "object" && !Array.isArray(o) ? o : null;
+    } catch {
+      return null;
+    }
+  })();
+  const scaleOf = (k: "normal" | "name"): number => {
+    const v = obj?.bubbleScale?.[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : BUBBLE_SCALE.default;
+  };
+  const setScale = (k: "normal" | "name", v: number) => {
+    if (!obj) return;
+    console.log(`[Editor] bubble size slider: ${k} = ${v.toFixed(2)}`);
+    const next = {...obj, bubbleScale: {normal: scaleOf("normal"), name: scaleOf("name"), [k]: v}};
+    setText(JSON.stringify(next, null, text.includes("\n") ? 2 : 0)); // pasted on one line -> stays on one line
+  };
+
   const valid = errors.length === 0;
   console.log(`[Editor] render: json ${valid ? "valid" : "invalid"}, video "${videoName}", picture "${pictureName}"`);
   return (
@@ -154,6 +192,18 @@ const Editor = () => {
                 autoCorrect="off"
                 placeholder="Paste the JSON text here"
               />
+            </div>
+
+            <div className="group">
+              <span className="gtitle">Bubble size (saved in the JSON)</span>
+              <Slider label="Normal bubbles" value={scaleOf("normal")} onChange={(v) => setScale("normal", v)} disabled={!obj} />
+              <Slider label="Name bubble" value={scaleOf("name")} onChange={(v) => setScale("name", v)} disabled={!obj} />
+              {!obj && (
+                <div className="msg">
+                  <span className="ico warn">!</span>
+                  <span>The sliders need readable JSON above.</span>
+                </div>
+              )}
             </div>
 
             <div className="group">

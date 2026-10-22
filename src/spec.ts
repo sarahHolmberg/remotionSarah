@@ -1,5 +1,5 @@
 // src/spec.ts
-// NOT NEW: existing file, changed (caption "out" can be a time; optional "captionZoom"; your optional "picture" kept)
+// NOT NEW: existing file, changed (comment fix only: "bubbleScale" scales the whole bubble, words included; the logic is the same as in the last version)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -14,6 +14,7 @@ export type Timing = {
 };
 export type Caption = {id: number; text: string; from: number; to: number; cells: string[]; mode: "center"; out: "default" | number; tail?: string};
 export type Zoom = {from: number; to: number; percent: number; cells: string[]; hold: true};
+export type BubbleScale = {normal: number; name: number}; // 1 = the size the bubbles always had
 export type Spec = {
   version: 1;
   video: {file: string};
@@ -34,7 +35,11 @@ export type Spec = {
   zooms: Zoom[];
   ending: {type: "fadeToBlack"; seconds: number}[];
   captionZoom?: {percent: number; seconds: number}; // optional: at every caption the camera nudges in, then out, then in...
+  bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
 };
+
+// Limits of the bubble size sliders (the editor tab uses the same numbers)
+export const BUBBLE_SCALE = {min: 0.7, max: 2.5, step: 0.05, default: 1};
 
 const FONTS = ["Comic Neue"]; // fonts the renderer knows
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
@@ -59,10 +64,10 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-    keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
-    if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
+  if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
   if (!isObj(s.grid) || !Number.isInteger(s.grid.size) || s.grid.size < 2 || s.grid.size > 26) errors.push("grid.size: must be a whole number from 2 to 26");
   num(s.fps, "fps", 1, 120);
   const n = isObj(s.grid) && Number.isInteger(s.grid.size) ? s.grid.size : 15;
@@ -135,7 +140,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
       const prev = caps[i - 1];
       if (i > 0 && isObj(prev) && isNum(prev.to) && isNum(c.from)) {
         if (c.from <= prev.to) errors.push(`${w}: starts at ${c.from}, before the previous caption is fully in (${prev.to})`);
-                 else if (c.from - prev.to < 0.2) warnings.push(`${w}: only ${(c.from - prev.to).toFixed(3)}s after the previous caption, the bubble will flick instead of flow`);
+        else if (c.from - prev.to < 0.2) warnings.push(`${w}: only ${(c.from - prev.to).toFixed(3)}s after the previous caption, the bubble will flick instead of flow`);
       }
     });
   }
@@ -175,6 +180,16 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
       keys(s.captionZoom, ["percent", "seconds"], "captionZoom");
       num(s.captionZoom.percent, "captionZoom.percent", 0.1, 20);
       num(s.captionZoom.seconds, "captionZoom.seconds", 0.05, 2);
+    }
+  }
+
+  // bubbleScale (optional): both numbers are needed when it is there
+  if (s.bubbleScale !== undefined) {
+    if (!isObj(s.bubbleScale)) errors.push('bubbleScale: must be an object like {"normal": 1, "name": 1}');
+    else {
+      keys(s.bubbleScale, ["normal", "name"], "bubbleScale");
+      num(s.bubbleScale.normal, "bubbleScale.normal", BUBBLE_SCALE.min, BUBBLE_SCALE.max);
+      num(s.bubbleScale.name, "bubbleScale.name", BUBBLE_SCALE.min, BUBBLE_SCALE.max);
     }
   }
   return {errors, warnings};
