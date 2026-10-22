@@ -1,5 +1,5 @@
 // src/spec.ts
-// NOT NEW: existing file, changed (comment fix only: "bubbleScale" scales the whole bubble, words included; the logic is the same as in the last version)
+// NOT NEW: existing file, changed (feature 2: "captionZoom" gets an optional "enabled" switch; CAPTION_ZOOM holds the limits of the zoom slider; "bubbleScale" from feature 1 is unchanged)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -34,12 +34,15 @@ export type Spec = {
   captions: Caption[];
   zooms: Zoom[];
   ending: {type: "fadeToBlack"; seconds: number}[];
-  captionZoom?: {percent: number; seconds: number}; // optional: at every caption the camera nudges in, then out, then in...
+  captionZoom?: {enabled?: boolean; percent: number; seconds: number}; // optional: at every NORMAL bubble the camera nudges in, then out, then in... (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
 };
 
 // Limits of the bubble size sliders (the editor tab uses the same numbers)
 export const BUBBLE_SCALE = {min: 0.7, max: 2.5, step: 0.05, default: 1};
+
+// Limits and start values of the zoom slider / checkbox (the editor tab uses the same numbers)
+export const CAPTION_ZOOM = {min: 0.5, max: 10, step: 0.5, defaultPercent: 3, defaultSeconds: 0.3};
 
 const FONTS = ["Comic Neue"]; // fonts the renderer knows
 const isNum = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
@@ -177,7 +180,8 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
   if (s.captionZoom !== undefined) {
     if (!isObj(s.captionZoom)) errors.push("captionZoom: must be an object");
     else {
-      keys(s.captionZoom, ["percent", "seconds"], "captionZoom");
+      keys(s.captionZoom, ["enabled", "percent", "seconds"], "captionZoom");
+      if (s.captionZoom.enabled !== undefined && typeof s.captionZoom.enabled !== "boolean") errors.push("captionZoom.enabled: must be true or false");
       num(s.captionZoom.percent, "captionZoom.percent", 0.1, 20);
       num(s.captionZoom.seconds, "captionZoom.seconds", 0.05, 2);
     }

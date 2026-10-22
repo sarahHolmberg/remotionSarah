@@ -1,10 +1,10 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (adds the "Bubble size" group: two sliders, normal bubbles and name bubble; they write "bubbleScale" into the JSON; same XP look)
+// NOT NEW: existing file, changed (feature 2: adds the "Zoom" group: a checkbox and a slider that write "captionZoom" into the JSON; the Slider is now generic; the bubble size sliders from feature 1 are unchanged)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {BUBBLE_SCALE, validateSpec} from "../src/spec";
+import {BUBBLE_SCALE, CAPTION_ZOOM, validateSpec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 
 console.log("[Editor] 1. file loaded");
@@ -27,20 +27,20 @@ const check = (text: string): {errors: string[]; warnings: string[]} => {
 };
 
 // A slider with its name on the left and its value on the right (XP look comes from the existing .row / .file classes)
-const Slider = ({label, value, onChange, disabled}: {label: string; value: number; onChange: (v: number) => void; disabled: boolean}) => (
+const Slider = ({label, value, min, max, step, show, onChange, disabled}: {label: string; value: number; min: number; max: number; step: number; show: (v: number) => string; onChange: (v: number) => void; disabled: boolean}) => (
   <div className="row">
     <span style={{width: 120}}>{label}</span>
     <input
       type="range"
-      min={BUBBLE_SCALE.min}
-      max={BUBBLE_SCALE.max}
-      step={BUBBLE_SCALE.step}
+      min={min}
+      max={max}
+      step={step}
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(Number(e.target.value))}
       style={{flex: 1, minWidth: 140, height: 32}}
     />
-    <span className="file" style={{flex: "none", width: 64, textAlign: "center"}}>x{value.toFixed(2)}</span>
+    <span className="file" style={{flex: "none", width: 64, textAlign: "center"}}>{show(value)}</span>
   </div>
 );
 
@@ -131,11 +131,23 @@ const Editor = () => {
     const v = obj?.bubbleScale?.[k];
     return typeof v === "number" && Number.isFinite(v) ? v : BUBBLE_SCALE.default;
   };
+  // write a changed JSON back into the box (pasted on one line -> stays on one line)
+  const save = (next: Record<string, any>) => setText(JSON.stringify(next, null, text.includes("\n") ? 2 : 0));
   const setScale = (k: "normal" | "name", v: number) => {
     if (!obj) return;
     console.log(`[Editor] bubble size slider: ${k} = ${v.toFixed(2)}`);
-    const next = {...obj, bubbleScale: {normal: scaleOf("normal"), name: scaleOf("name"), [k]: v}};
-    setText(JSON.stringify(next, null, text.includes("\n") ? 2 : 0)); // pasted on one line -> stays on one line
+    save({...obj, bubbleScale: {normal: scaleOf("normal"), name: scaleOf("name"), [k]: v}});
+  };
+
+  // the zoom at every normal bubble: checkbox = enabled, slider = percent
+  const cz = obj?.captionZoom;
+  const zoomOn = !!cz && cz.enabled !== false; // captionZoom missing = off, present without "enabled" = on
+  const zoomPercent = typeof cz?.percent === "number" && Number.isFinite(cz.percent) ? cz.percent : CAPTION_ZOOM.defaultPercent;
+  const zoomSeconds = typeof cz?.seconds === "number" && Number.isFinite(cz.seconds) ? cz.seconds : CAPTION_ZOOM.defaultSeconds;
+  const setZoom = (patch: {enabled?: boolean; percent?: number}) => {
+    if (!obj) return;
+    console.log(`[Editor] zoom: ${JSON.stringify(patch)}`);
+    save({...obj, captionZoom: {enabled: zoomOn, percent: zoomPercent, seconds: zoomSeconds, ...patch}});
   };
 
   const valid = errors.length === 0;
@@ -196,14 +208,23 @@ const Editor = () => {
 
             <div className="group">
               <span className="gtitle">Bubble size (saved in the JSON)</span>
-              <Slider label="Normal bubbles" value={scaleOf("normal")} onChange={(v) => setScale("normal", v)} disabled={!obj} />
-              <Slider label="Name bubble" value={scaleOf("name")} onChange={(v) => setScale("name", v)} disabled={!obj} />
+              <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
+              <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
               {!obj && (
                 <div className="msg">
                   <span className="ico warn">!</span>
                   <span>The sliders need readable JSON above.</span>
                 </div>
               )}
+            </div>
+
+            <div className="group">
+              <span className="gtitle">Zoom (saved in the JSON)</span>
+              <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
+                <input type="checkbox" checked={zoomOn} disabled={!obj} onChange={(e) => setZoom({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
+                <span>Small zoom at every normal bubble (in, out, in, out...)</span>
+              </label>
+              <Slider label="Zoom amount" value={zoomPercent} min={CAPTION_ZOOM.min} max={CAPTION_ZOOM.max} step={CAPTION_ZOOM.step} show={(v) => `${v.toFixed(1)}%`} onChange={(v) => setZoom({percent: v})} disabled={!obj || !zoomOn} />
             </div>
 
             <div className="group">

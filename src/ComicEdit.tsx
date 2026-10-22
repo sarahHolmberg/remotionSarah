@@ -1,5 +1,5 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (the bubble size sliders ("bubbleScale") now scale the WHOLE bubble: words, bubble and picture circle together; the tail tip stays on the exact spot it points to at normal size)
+// NOT NEW: existing file, changed (feature 2: "captionZoom" now zooms toward each NORMAL bubble, alternating in / out, and can be switched off with "enabled": false; the name bubble no longer triggers it)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Easing, Img, interpolate, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
@@ -140,19 +140,37 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const live = [...geo.zooms].reverse().find((z) => t >= z.from) ?? geo.zooms[0];
   const origin = live ? live.origin : {x: width / 2, y: height / 2};
 
-  // captionZoom: every caption nudges the camera, alternating in, out, in, out (out = back to normal size)
-  let pulse = 1;
+  // captionZoom: the camera nudges at every NORMAL bubble (not the name bubble), alternating in, out, in, out...
+  // "in" zooms toward that bubble. "out" goes back to normal size while the focus glides from the previous bubble to this one.
+  // It is drawn as translate + scale around a focus point f (x' = f + s * (x - f)), so a new focus never makes the picture jump.
+  let pulse = {s: 1, x: 0, y: 0};
   const cz = spec.captionZoom;
-  if (cz) {
+  if (cz && cz.enabled !== false) {
     const p = cz.percent / 100;
-    captions.forEach((cap, i) => {
-      const dur = Math.max(Math.min(cz.seconds, (captions[i + 1]?.from ?? Infinity) - cap.from), 0.01); // never longer than the time to the next caption
-      if (frame === Math.round(cap.from * fps)) console.log(`[Comic] #${cap.id} camera ${i % 2 === 0 ? "in" : "out"} ${cz.percent}% over ${dur.toFixed(3)}s`);
-      if (t < cap.from) return;
-      const before = i % 2 === 1 ? 1 + p : 1; // size left by the previous caption
-      const after = i % 2 === 0 ? 1 + p : 1;
-      pulse = interpolate(t, [cap.from, cap.from + dur], [before, after], {...clamp, easing: Easing.inOut(Easing.cubic)});
+    const normal = captions.map((cap, k) => ({cap, k})).filter(({cap}) => cap.id !== NAME_BUBBLE_ID);
+    let cur = -1; // the last normal bubble that has started
+    normal.forEach(({cap}, j) => {
+      if (t >= cap.from) cur = j;
+      if (frame === Math.round(cap.from * fps)) console.log(`[Comic] #${cap.id} camera ${j % 2 === 0 ? "in" : "out"} ${cz.percent}% toward this bubble`);
     });
+    if (cur >= 0) {
+      const {cap, k} = normal[cur];
+      const nextFrom = normal[cur + 1]?.cap.from ?? Infinity;
+      const dur = Math.max(Math.min(cz.seconds, nextFrom - cap.from), 0.01); // never longer than the time to the next normal bubble
+      const u = interpolate(t, [cap.from, cap.from + dur], [0, 1], {...clamp, easing: Easing.inOut(Easing.cubic)});
+      const here = geo.items[k].c;
+      let sc: number;
+      let f: P;
+      if (cur % 2 === 0) {
+        sc = 1 + p * u; // in, toward this bubble
+        f = here;
+      } else {
+        const prev = geo.items[normal[cur - 1].k].c;
+        sc = 1 + p * (1 - u); // out; the focus glides from the previous bubble to this one
+        f = {x: prev.x + (here.x - prev.x) * u, y: prev.y + (here.y - prev.y) * u};
+      }
+      pulse = {s: sc, x: f.x * (1 - sc), y: f.y * (1 - sc)};
+    }
   }
 
   const fade = spec.ending.find((e) => e.type === "fadeToBlack");
@@ -247,8 +265,12 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
 
   return (
     <AbsoluteFill style={{background: "black"}}>
-      <AbsoluteFill style={{opacity: endFade, transform: `scale(${zoom * pulse})`, transformOrigin: `${origin.x}px ${origin.y}px`}}>
-        <OffthreadVideo src={spec.videoSrc ?? staticFile(spec.video.file)} style={{width, height}} />
+      <AbsoluteFill style={{opacity: endFade}}>
+        <AbsoluteFill style={{transform: `translate(${pulse.x}px, ${pulse.y}px) scale(${pulse.s})`, transformOrigin: "0 0"}}>
+          <AbsoluteFill style={{transform: `scale(${zoom})`, transformOrigin: `${origin.x}px ${origin.y}px`}}>
+            <OffthreadVideo src={spec.videoSrc ?? staticFile(spec.video.file)} style={{width, height}} />
+          </AbsoluteFill>
+        </AbsoluteFill>
       </AbsoluteFill>
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
