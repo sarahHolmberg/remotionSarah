@@ -1,5 +1,5 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (chaining removed again; adds the NAME BUBBLE for caption id 1; bubble and text size constants at the top)
+// NOT NEW: existing file, changed (chaining removed again; adds the NAME BUBBLE for caption id 1; bubble and text size constants at the top; optional "captionZoom": the camera nudges in/out at every caption)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Easing, Img, interpolate, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
@@ -121,6 +121,21 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const live = [...geo.zooms].reverse().find((z) => t >= z.from) ?? geo.zooms[0];
   const origin = live ? live.origin : {x: width / 2, y: height / 2};
 
+  // captionZoom: every caption nudges the camera, alternating in, out, in, out (out = back to normal size)
+  let pulse = 1;
+  const cz = spec.captionZoom;
+  if (cz) {
+    const p = cz.percent / 100;
+    captions.forEach((cap, i) => {
+      const dur = Math.max(Math.min(cz.seconds, (captions[i + 1]?.from ?? Infinity) - cap.from), 0.01); // never longer than the time to the next caption
+      if (frame === Math.round(cap.from * fps)) console.log(`[Comic] #${cap.id} camera ${i % 2 === 0 ? "in" : "out"} ${cz.percent}% over ${dur.toFixed(3)}s`);
+      if (t < cap.from) return;
+      const before = i % 2 === 1 ? 1 + p : 1; // size left by the previous caption
+      const after = i % 2 === 0 ? 1 + p : 1;
+      pulse = interpolate(t, [cap.from, cap.from + dur], [before, after], {...clamp, easing: Easing.inOut(Easing.cubic)});
+    });
+  }
+
   const fade = spec.ending.find((e) => e.type === "fadeToBlack");
   const fadeStart = durationInFrames - (fade ? fade.seconds * fps : 0);
   const endFade = fade ? interpolate(frame, [fadeStart, durationInFrames - 1], [1, 0], clamp) : 1;
@@ -209,7 +224,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
 
   return (
     <AbsoluteFill style={{background: "black"}}>
-      <AbsoluteFill style={{opacity: endFade, transform: `scale(${zoom})`, transformOrigin: `${origin.x}px ${origin.y}px`}}>
+      <AbsoluteFill style={{opacity: endFade, transform: `scale(${zoom * pulse})`, transformOrigin: `${origin.x}px ${origin.y}px`}}>
         <OffthreadVideo src={spec.videoSrc ?? staticFile(spec.video.file)} style={{width, height}} />
       </AbsoluteFill>
 

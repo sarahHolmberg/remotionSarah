@@ -1,5 +1,5 @@
 // src/spec.ts
-// NEW FILE (to be created)
+// NOT NEW: existing file, changed (caption "out" can be a time; optional "captionZoom"; your optional "picture" kept)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -12,7 +12,7 @@ export type Timing = {
   endShrinkSeconds: number;
   split: {close: number; travel: number; open: number};
 };
-export type Caption = {id: number; text: string; from: number; to: number; cells: string[]; mode: "center"; out: "default"; tail?: string};
+export type Caption = {id: number; text: string; from: number; to: number; cells: string[]; mode: "center"; out: "default" | number; tail?: string};
 export type Zoom = {from: number; to: number; percent: number; cells: string[]; hold: true};
 export type Spec = {
   version: 1;
@@ -33,6 +33,7 @@ export type Spec = {
   captions: Caption[];
   zooms: Zoom[];
   ending: {type: "fadeToBlack"; seconds: number}[];
+  captionZoom?: {percent: number; seconds: number}; // optional: at every caption the camera nudges in, then out, then in...
 };
 
 const FONTS = ["Comic Neue"]; // fonts the renderer knows
@@ -58,7 +59,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-    keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending"], "top level");
+    keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
     if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -125,7 +126,11 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
       if (isNum(c.from) && isNum(c.to) && c.from >= c.to) errors.push(`${w}: "from" must be smaller than "to"`);
       if (!Array.isArray(c.cells) || c.cells.length === 0 || !c.cells.every((x: unknown) => cellOk(x, n))) errors.push(`${w}.cells: needs at least one cell that exists on the ${n}x${n} grid (A1 to ${String.fromCharCode(64 + n)}${n})`);
       if (c.mode !== "center") errors.push(`${w}.mode: only "center" is supported`);
-      if (c.out !== "default") errors.push(`${w}.out: only "default" is supported`);
+      if (c.out !== "default") {
+        const nx = caps[i + 1];
+        if (!isNum(c.out) || !isNum(c.to) || c.out <= c.to) errors.push(`${w}.out: must be "default" or a time later than "to"`);
+        else if (isObj(nx) && isNum(nx.from) && c.out > nx.from) errors.push(`${w}.out: ${c.out} is after the next caption starts (${nx.from})`);
+      }
       if (c.tail !== undefined && !cellOk(c.tail, n)) errors.push(`${w}.tail: not a cell on the grid`);
       const prev = caps[i - 1];
       if (i > 0 && isObj(prev) && isNum(prev.to) && isNum(c.from)) {
@@ -161,6 +166,16 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
       if (e.type !== "fadeToBlack") errors.push(`${w}.type: only "fadeToBlack" is supported`);
       num(e.seconds, `${w}.seconds`, 0.1, 30);
     });
+  }
+
+  // captionZoom (optional)
+  if (s.captionZoom !== undefined) {
+    if (!isObj(s.captionZoom)) errors.push("captionZoom: must be an object");
+    else {
+      keys(s.captionZoom, ["percent", "seconds"], "captionZoom");
+      num(s.captionZoom.percent, "captionZoom.percent", 0.1, 20);
+      num(s.captionZoom.seconds, "captionZoom.seconds", 0.05, 2);
+    }
   }
   return {errors, warnings};
 };

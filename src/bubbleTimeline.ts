@@ -1,11 +1,11 @@
 // src/bubbleTimeline.ts
-// NOT NEW: existing file, changed (chaining removed again: back to the version from before the chaining)
+// NOT NEW: existing file, changed (chaining removed again: back to the version from before the chaining; a caption can now have an exact "out" time)
 
 // Where is the ONE bubble at time t? Pure math (no Remotion) so it can be tested on its own.
 import type {Timing} from "./spec";
 
 export type Item = {text: string; from: number; to: number; center: string; tail?: string}; // used by the older test files
-export type Span = {from: number; to: number};
+export type Span = {from: number; to: number; out?: number | "default"}; // out as a number = words gone exactly then
 export type Blob =
   | {kind: "cell"; k: number; o: number; sc: number} // o: 0 = ball, 1 = full bubble; sc: pop-in/out scale
   | {kind: "thread"; k: number; p: number}; // flowing from cell k to cell k+1, p = 0..1
@@ -32,7 +32,7 @@ const ease = (x: number) => {
 export const schedule = (items: Span[], tm: Timing = DEFAULT_TIMING) =>
   items.map((it, i) => {
     const next = items[i + 1];
-    const out = next ? Math.max(it.to + tm.exitFadeSeconds, next.from - tm.gapBeforeNextSeconds) : it.to + tm.lastHoldSeconds;
+    const out = typeof it.out === "number" ? it.out : next ? Math.max(it.to + tm.exitFadeSeconds, next.from - tm.gapBeforeNextSeconds) : it.to + tm.lastHoldSeconds;
     const W = next ? Math.max(next.from - out, 0.02) : 0;
     return {out, W};
   });
