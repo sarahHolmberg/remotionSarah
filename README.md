@@ -1,3 +1,8 @@
 - add an easy copy button for usernames in video vault
 - make a small zoom towards each spoken action
 - add name the file the taget person name in the instrctions for voiceediting
+- addd an action jump button(0.5s)
+- make a shortcut key to bring up the intructions for action
+- add fucntio to convert webm video to mp4 in app
+- paste to uniscribe in app(open incognito tab)
+- add beat syncer
