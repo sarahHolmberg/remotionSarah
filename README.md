@@ -6,3 +6,4 @@
 - add fucntio to convert webm video to mp4 in app
 - paste to uniscribe in app(open incognito tab)
 - add beat syncer
+- change the format to "editing dancers like comics book until we can caption every move"
