@@ -1,5 +1,5 @@
 // app/preview.tsx
-// NOT NEW: existing file, changed (feature 3: adds the "Name zoom" slider; its value goes into the Player and into the export as "nameZoom"; the picture handling is unchanged)
+// NOT NEW: existing file, changed (uploads go in 8 MB pieces so the export also works on Cloud Run)
 
 // Tab 2: plays the video with the captions on top (the same ComicEdit that Remotion renders), updates live when the editor tab sends new JSON, a new video or a new picture.
 import {Component, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -41,6 +41,19 @@ const NAME_ZOOM_KEY = "comic-name-zoom"; // the slider value is kept in the brow
 
 type Meta = {w: number; h: number; seconds: number};
 type Uploaded = {url: string; name: string};
+
+// Files go to the server in pieces: Cloud Run refuses request bodies over 32 MB. Returns the name the server saved it as.
+const UPLOAD_PIECE = 8 * 1024 * 1024;
+const uploadFile = async (f: File, name: string): Promise<string> => {
+  let saved = "";
+  for (let offset = 0; offset === 0 || offset < f.size; offset += UPLOAD_PIECE) {
+    const up = await fetch(`/api/upload?name=${encodeURIComponent(name)}&offset=${offset}`, {method: "POST", body: f.slice(offset, offset + UPLOAD_PIECE)});
+    if (!up.ok) throw new Error(`upload of ${f.name} failed: ${up.status} ${await up.text()}`);
+    saved = (await up.json()).file;
+    console.log(`[Preview] upload ${f.name}: ${Math.min(offset + UPLOAD_PIECE, f.size)} of ${f.size} bytes`);
+  }
+  return saved;
+};
 
 const parse = (text: string): {spec?: Spec; errors: string[]} => {
   if (!text.trim()) {
@@ -198,9 +211,7 @@ const Preview = () => {
         const f = await loadVideo();
         if (f) {
           console.log(`[Preview] export: uploading video ${f.name} (${(f.size / 1e6).toFixed(1)} MB)`);
-          const up = await fetch(`/api/upload?name=${encodeURIComponent(f.name)}`, {method: "POST", body: f});
-          if (!up.ok) throw new Error(`video upload failed: ${up.status} ${await up.text()}`);
-          const {file: saved} = await up.json();
+          const saved = await uploadFile(f, f.name);
           console.log(`[Preview] export: server saved the video as public/${saved}`);
           spec = {...spec, video: {file: saved}}; // the render reads public/<file>
         }
@@ -211,9 +222,7 @@ const Preview = () => {
         const pf = await loadPicture();
         if (pf) {
           console.log(`[Preview] export: uploading picture ${pf.name} (${(pf.size / 1e3).toFixed(0)} KB)`);
-          const up = await fetch(`/api/upload?name=${encodeURIComponent("picture-" + pf.name)}`, {method: "POST", body: pf});
-          if (!up.ok) throw new Error(`picture upload failed: ${up.status} ${await up.text()}`);
-          const {file: saved} = await up.json();
+          const saved = await uploadFile(pf, "picture-" + pf.name);
           console.log(`[Preview] export: server saved the picture as public/${saved}`);
           spec = {...spec, picture: {file: saved}};
         }
@@ -247,7 +256,7 @@ const Preview = () => {
 
       if (done) {
         console.log("[Preview] export: render done, downloading comic.mp4");
-        setExportMsg("Done. Downloading comic.mp4 (also saved in out/comic.mp4)");
+        setExportMsg("Done. Downloading comic.mp4");
         const a = document.createElement("a");
         a.href = `/api/download?t=${Date.now()}`;
         a.download = "comic.mp4";

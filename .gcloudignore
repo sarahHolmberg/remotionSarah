@@ -1,0 +1,8 @@
+# what `gcloud run deploy --source .` does NOT upload to Cloud Build
+.git
+.gitignore
+.gcloudignore
+node_modules/
+dist/
+build/
+out/

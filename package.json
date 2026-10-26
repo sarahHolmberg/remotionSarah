@@ -13,6 +13,9 @@
     "bubble": "remotion render NatashaBubble out/bubble.mp4 --concurrency=2",
     "comic": "remotion render NatashaComic out/comic.mp4 --concurrency=2",
     "app": "vite --config app/vite.config.ts",
+    "app:build": "vite build --config app/vite.config.ts",
+    "bundle": "remotion bundle src/index.ts --out-dir=build",
+    "serve": "node server/server.mjs",
     "comicjson": "remotion render ComicEdit out/comicjson.mp4 --props=scripts/natasja.json --concurrency=2"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 // app/vite.config.ts
-// NOT NEW: existing file, changed (adds /api/upload, /api/render, /api/download so the preview can export a video)
+// NOT NEW: existing file, changed (uploads arrive in pieces; build settings for the Cloud Run server)
 
 import {defineConfig, type Plugin} from "vite";
 import react from "@vitejs/plugin-react";
@@ -27,11 +27,12 @@ const renderApi = (): Plugin => ({
       if (req.method === "POST" && url.pathname === "/api/upload") {
         const safe = path.basename(url.searchParams.get("name") ?? "video.mp4").replace(/[^A-Za-z0-9._-]/g, "_");
         const file = `export-input-${safe}`;
+        const offset = Number(url.searchParams.get("offset") ?? 0); // the preview sends files in pieces: 0 starts the file, the rest are appended
         fs.mkdirSync(path.join(ROOT, "public"), {recursive: true});
-        const ws = fs.createWriteStream(path.join(ROOT, "public", file));
+        const ws = fs.createWriteStream(path.join(ROOT, "public", file), {flags: offset > 0 ? "a" : "w"});
         req.pipe(ws);
         ws.on("finish", () => {
-          log(`video saved: public/${file} (${ws.bytesWritten} bytes)`);
+          log(`video saved: public/${file} (${ws.bytesWritten} bytes at ${offset})`);
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify({file}));
         });
@@ -108,10 +109,17 @@ const renderApi = (): Plugin => ({
 });
 
 // Dev server for the two-tab GUI. root = app/, the video is served from the same public/ folder Remotion uses.
+// `npm run app:build` writes both pages to dist/ for server/server.mjs (public/ is not copied: the server serves it from the Remotion bundle).
 export default defineConfig({
   root: "app",
   publicDir: "../public",
   plugins: [react(), renderApi()],
+  build: {
+    outDir: "../dist",
+    emptyOutDir: true,
+    copyPublicDir: false,
+    rollupOptions: {input: {editor: path.resolve(ROOT, "app/index.html"), preview: path.resolve(ROOT, "app/preview.html")}},
+  },
   server: {
     host: true, // host: true so a Codespace can forward the port
     port: 5173,
