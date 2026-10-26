@@ -12,9 +12,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import renderer from "@remotion/renderer"; // installed with @remotion/cli, same version
-
-const {renderMedia, selectComposition} = renderer;
+import {renderMedia, selectComposition} from "@remotion/renderer"; // installed with @remotion/cli, same version
 
 const ROOT = process.cwd(); // run from the repo root (the Dockerfile does)
 const DIST = path.join(ROOT, "dist"); // the built pages
