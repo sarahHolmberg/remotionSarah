@@ -202,7 +202,8 @@ const Editor = () => {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? r.status);
       const next = {...obj};
-      PROFILE_KEYS.forEach((k) => (d[k] === undefined ? delete next[k] : (next[k] = d[k])));
+      // a profile setting replaces the JSON's, but keeps what belongs to this video (impact.at / impact.captions)
+      PROFILE_KEYS.forEach((k) => (d[k] === undefined ? delete next[k] : (next[k] = k === "impact" ? {...obj.impact, ...d[k]} : d[k])));
       save(next);
       console.log(`[Editor] loaded profile ${picked}`);
       setProfileMsg(`Loaded "${picked}".`);
@@ -214,6 +215,7 @@ const Editor = () => {
     const name = newName.trim().replace(/\s+/g, "-");
     if (!eff || !name) return;
     const data = Object.fromEntries(PROFILE_KEYS.filter((k) => eff[k] !== undefined).map((k) => [k, eff[k]]));
+    data.impact = {size: eff.impact?.size}; // the size only: where the bursts go belongs to each video
     try {
       setProfileMsg(`Saving "${name}"...`);
       const r = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
@@ -348,7 +350,12 @@ const Editor = () => {
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
                 <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
                 <Slider label="Impact burst" value={eff?.impact?.size ?? IMPACT.defaultSize} min={IMPACT.min} max={IMPACT.max} step={IMPACT.step} show={(v) => (v > 0 ? `x${v.toFixed(2)}` : "off")} onChange={setImpact} disabled={!obj} />
-                <span className="hint">Impact burst: behind caption {eff?.impact?.captions?.join(", ") ?? "#2 (the first normal bubble)"}, as big as this many bubble widths.</span>
+                <span className="hint">
+                  Impact burst, as big as this many bubble widths:{" "}
+                  {eff?.impact?.at?.length ? `at ${eff.impact.at.map((x) => `${x.cell} (${x.from}s)`).join(", ")}` : ""}
+                  {eff?.impact?.captions?.length ? ` behind caption ${eff.impact.captions.join(", ")}` : ""}
+                  {!eff?.impact?.at?.length && !eff?.impact?.captions ? "behind the first normal bubble" : ""}.
+                </span>
               </div>
 
               <div className="group">

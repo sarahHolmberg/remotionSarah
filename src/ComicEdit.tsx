@@ -6,7 +6,7 @@ import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, random, S
 import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the JSON can name for now
 import {cellRect} from "./gridCell";
 import {blobsAt, chainGroups, chainSchedule, type ChainBlob} from "./bubbleTimeline";
-import type {Caption, Spec} from "./spec";
+import {IMPACT, type Caption, type Spec} from "./spec";
 
 const {fontFamily} = loadFont("normal", {weights: ["700"]});
 const ADV = 0.66; // average capital-letter width as a fraction of font size (only sizes the bubble)
@@ -418,9 +418,28 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     );
   };
 
-  // impact bursts: behind the bubbles of the captions listed in "impact.captions" (missing = the first normal caption), as big as size x the bubble width
+  // impact bursts: behind the bubbles of the captions in "impact.captions", and on their own at the cells in "impact.at"
+  // (with neither: behind the first normal caption). As big as size x the bubble width.
   const impactSize = spec.impact?.size ?? 0;
-  const impactIds = spec.impact?.captions ?? [captions.find((c) => c.id !== NAME_BUBBLE_ID)?.id ?? captions[0].id];
+  const impactAt = spec.impact?.at ?? [];
+  const impactIds = spec.impact?.captions ?? (impactAt.length ? [] : [captions.find((c) => c.id !== NAME_BUBBLE_ID)?.id ?? captions[0].id]);
+  const burst = (key: string, seed: string, x: number, y: number, d: number) => (
+    <foreignObject key={key} x={x - d / 2} y={y - d / 2} width={d} height={d}>
+      <Img src={staticFile(IMPACT_FILE)} style={{width: "100%", height: "100%", objectFit: "contain", transform: `rotate(${random(seed) * 360}deg)`, filter: `drop-shadow(0 0 ${Math.max(1, lw)}px ${style.ink})`}} />
+    </foreignObject>
+  );
+  const impactAtLayer = () =>
+    impactSize > 0
+      ? impactAt.map((a, i) => {
+          const pop = 0.15; // seconds to pop in and to shrink away
+          const end = Math.max(a.to ?? a.from + IMPACT.holdSeconds, a.from + pop + 0.01); // interpolate needs the times in order
+          const k = interpolate(t, [a.from, a.from + pop, end, end + pop], [0, 1, 1, 0], {...clamp, easing: Easing.out(Easing.back(2))});
+          const d = impactSize * IMPACT.bubbleCells * geo.cw * k;
+          if (d < 2) return null;
+          const r = cellRect(a.cell, width, height, N);
+          return burst(`impactAt${i}`, `impact-at-${i}-${a.cell}`, r.cx, r.cy, d);
+        })
+      : null;
   const impactLayer = () =>
     impactSize > 0
       ? blobs.map((b, i) => {
@@ -428,12 +447,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           const g = geo.items[b.k];
           const d = impactSize * 2 * g.rx * b.o * b.sc; // grows and shrinks with its bubble
           if (d < 2) return null;
-          const turn = random(`impact-${captions[b.k].id}`) * 360; // every burst turned its own way
-          return (
-            <foreignObject key={`impact${i}`} x={g.c.x - d / 2} y={g.c.y - d / 2} width={d} height={d}>
-              <Img src={staticFile(IMPACT_FILE)} style={{width: "100%", height: "100%", objectFit: "contain", transform: `rotate(${turn}deg)`, filter: `drop-shadow(0 0 ${Math.max(1, lw)}px ${style.ink})`}} />
-            </foreignObject>
-          );
+          return burst(`impact${i}`, `impact-${captions[b.k].id}`, g.c.x, g.c.y, d); // every burst turned its own way
         })
       : null;
 
@@ -479,6 +493,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
         {impactLayer()}
+        {impactAtLayer()}
         {blobs.length > 0 && (
           <g>
             {/* links first, so the bubbles sit on top of them; the ink pass first, so the fill pass hides the outline where a link enters a bubble */}
