@@ -167,6 +167,11 @@ http
     }
     if (url.pathname.startsWith("/api/")) log(`${req.method} ${url.pathname}`);
 
+    if (req.method === "GET" && url.pathname === "/api/version") {
+      // K_REVISION is set by Cloud Run: the name of the deploy that serves this page (remotion-render-00004-abc)
+      res.writeHead(200, {"Content-Type": "application/json", "Cache-Control": "no-cache"});
+      return res.end(JSON.stringify({revision: process.env.K_REVISION ?? "local server"}));
+    }
     if (req.method === "POST" && url.pathname === "/api/upload") return upload(req, res, url);
     if (req.method === "POST" && url.pathname === "/api/render") return void render(req, res);
     if (req.method === "GET" && url.pathname === "/api/download") {
@@ -184,7 +189,7 @@ http
     // the pages, then the public files (the preview falls back to public/<video.file>, the sound mp3)
     if (req.method === "GET") {
       const f = inside(DIST, url.pathname === "/" ? "/index.html" : url.pathname) ?? inside(PUBLIC, url.pathname);
-      if (f) return sendFile(res, f);
+      if (f) return sendFile(res, f, f.endsWith(".html") ? {"Cache-Control": "no-cache"} : {}); // pages are always re-checked, so a new deploy shows right away
     }
     res.statusCode = 404;
     res.end("not found");

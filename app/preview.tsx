@@ -10,6 +10,7 @@ import {staticFile} from "remotion";
 import {ComicEdit} from "../src/ComicEdit";
 import {NAME_ZOOM, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, loadPicture, loadVideo, STORE_KEY} from "./shared";
+import {VersionTag} from "./version";
 
 console.log("[Preview] 1. file loaded, all imports resolved");
 
@@ -272,7 +273,14 @@ const Preview = () => {
 
   if (!shown) {
     console.log(`[Preview] nothing to show yet (${errors.length ? "errors" : "still loading"})`);
-    return <div style={{padding: 24}}>{errors.length ? errors.map((e, i) => <p key={i} style={{color: "#ff7a7a"}}>{e}</p>) : "Loading the video..."}</div>;
+    return (
+      <div style={{padding: 24}}>
+        {errors.length ? errors.map((e, i) => <p key={i} style={{color: "#ff7a7a"}}>{e}</p>) : "Loading the video..."}
+        <p>
+          <VersionTag style={{opacity: 0.6}} />
+        </p>
+      </div>
+    );
   }
   const {spec, meta: m} = shown;
   console.log(`[Preview] 7. rendering the Player: ${m.w}x${m.h}, ${spec.fps}fps, ${Math.ceil(m.seconds * spec.fps)} frames`);
@@ -315,6 +323,7 @@ const Preview = () => {
           }}
         />
       </div>
+      <VersionTag style={{opacity: 0.6}} />
     </div>
   );
 };

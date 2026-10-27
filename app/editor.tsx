@@ -6,6 +6,7 @@ import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
 import {BUBBLE_SCALE, CAPTION_ZOOM, POP_SOUND, validateSpec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
+import {VersionTag} from "./version";
 
 console.log("[Editor] 1. file loaded");
 
@@ -289,6 +290,7 @@ const Editor = () => {
           Preview
         </a>
         <span className="taskbtn">Comic editor</span>
+        <VersionTag style={{marginLeft: "auto", alignSelf: "center", paddingRight: 10, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0}} />
       </div>
     </>
   );

@@ -89,6 +89,12 @@ const renderApi = (): Plugin => ({
         return;
       }
 
+      // the version line at the bottom of the pages asks which server it runs on
+      if (req.method === "GET" && url.pathname === "/api/version") {
+        res.setHeader("Content-Type", "application/json");
+        return res.end(JSON.stringify({revision: "dev server"}));
+      }
+
       // 3. the finished video
       if (req.method === "GET" && url.pathname === "/api/download") {
         const f = path.join(ROOT, OUT);
@@ -114,6 +120,11 @@ export default defineConfig({
   root: "app",
   publicDir: "../public",
   plugins: [react(), renderApi()],
+  // shown at the bottom of both pages (app/version.tsx)
+  define: {
+    __APP_VERSION__: JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   build: {
     outDir: "../dist",
     emptyOutDir: true,
