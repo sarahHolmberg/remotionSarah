@@ -3,3 +3,8 @@
 - [ ] extension from trimmer to transciber to json instriction
 - [ ] make gui for video editor
 - [ ] add picture field to video vault, and add this picture so itt is displayed in the grid recordder
+- [ ] connect Metricool to the video server: "Send to Metricool" in the preview (caption, @tags, date/time, networks) schedules the exported video directly
+      notes: Metricool MCP (https://ai.metricool.com/mcp) works on the Free plan with a Metricool sign-in (max 20 scheduled posts on Free);
+             the API-key route needs the Advanced plan. Test it through Claude first (connector), then build the button.
+             The server must give each finished video a temporary public link so Metricool can fetch it.
+- [ ] dashboard in the grid player: number of videos done and the money that corresponds
