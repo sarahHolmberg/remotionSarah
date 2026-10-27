@@ -1,5 +1,5 @@
 // app/preview.tsx
-// NOT NEW: existing file, changed (no sliders here any more: name zoom and outro moved to the editor tab, the JSON carries every setting)
+// NOT NEW: existing file, changed (after an export the "Send to Buffer" panel shows, app/buffer.tsx)
 
 // Tab 2: plays the video with the captions on top (the same ComicEdit that Remotion renders), updates live when the editor tab sends new JSON, a new video or a new picture.
 import {Component, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -11,6 +11,7 @@ import {ComicEdit} from "../src/ComicEdit";
 import {applyDefaults, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, loadPicture, loadVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
+import {SendToBuffer} from "./buffer";
 
 console.log("[Preview] 1. file loaded, all imports resolved");
 
@@ -90,6 +91,7 @@ const Preview = () => {
   const [shown, setShown] = useState<{spec: Spec; meta: Meta; src: string} | null>(null); // last good version stays on screen
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
+  const [exported, setExported] = useState(false); // a finished video is on the server: the Buffer panel shows
   const [renderLog, setRenderLog] = useState<string[]>([]);
 
   const readUploaded = () => {
@@ -231,6 +233,7 @@ const Preview = () => {
       if (done) {
         console.log("[Preview] export: render done, downloading comic.mp4");
         setExportMsg("Done. Downloading comic.mp4");
+        setExported(true);
         const a = document.createElement("a");
         a.href = `/api/download?t=${Date.now()}`;
         a.download = "comic.mp4";
@@ -271,6 +274,7 @@ const Preview = () => {
         </button>
         {exportMsg && <span style={{fontSize: 13}}>{exportMsg}</span>}
       </div>
+      {exported && <SendToBuffer />}
       {renderLog.length > 0 && (
         <pre style={{margin: 0, maxWidth: "90vw", maxHeight: 160, overflow: "auto", fontSize: 11, background: "#1e1830", padding: 8}}>{renderLog.join("\n")}</pre>
       )}
