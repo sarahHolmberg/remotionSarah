@@ -1,5 +1,5 @@
 // src/spec.ts
-// NOT NEW: existing file, changed (adds the optional "chain" {enabled, windowSeconds} and CHAIN, the limits of the chain window slider in the editor tab)
+// NOT NEW: existing file, changed (adds the optional "outro" {secondsBeforeEnd, text} and OUTRO, the limits of the outro slider in the preview tab)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -40,6 +40,7 @@ export type Spec = {
   captionZoom?: {enabled?: boolean; percent: number; seconds: number}; // optional: at every NORMAL bubble the camera nudges in, then out, then in... (enabled missing = on, false = off)
   nameZoom?: {percent: number; seconds: number}; // optional: extra zoom (with blur) toward the name bubble while it is on screen; percent 0 = off
   popSound?: {enabled?: boolean; offsetSeconds: number}; // optional: the bubble pop sound at the first bubble; offset moves it earlier (-) or later (+); enabled missing = on, false = off
+  outro?: {secondsBeforeEnd: number; text?: string}; // optional: the end bubble (center, fills the screen, three dots turn into the text, pop sound); secondsBeforeEnd 0 = off
   chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
 };
@@ -55,6 +56,9 @@ export const NAME_ZOOM = {min: 0, max: 15, step: 0.5, defaultPercent: 4, default
 
 // Limits and start value of the chain window slider (the editor tab uses the same numbers)
 export const CHAIN = {min: 0.5, max: 4, step: 0.1, defaultSeconds: 1.5};
+
+// Limits and start values of the outro slider (the preview tab uses the same numbers); 0 = no outro
+export const OUTRO = {min: 0, max: 5, step: 0.1, defaultSeconds: 1, defaultText: "MIRRORS"};
 
 // Limits of the pop sound offset slider (the editor tab uses the same numbers)
 export const POP_SOUND = {min: -0.5, max: 0.5, step: 0.01, defaultOffset: 0};
@@ -82,7 +86,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -222,6 +226,16 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
     }
   }
 
+  // outro (optional)
+  if (s.outro !== undefined) {
+    if (!isObj(s.outro)) errors.push('outro: must be an object like {"secondsBeforeEnd": 1, "text": "MIRRORS"}');
+    else {
+      keys(s.outro, ["secondsBeforeEnd", "text"], "outro");
+      num(s.outro.secondsBeforeEnd, "outro.secondsBeforeEnd", OUTRO.min, OUTRO.max);
+      if (s.outro.text !== undefined && (typeof s.outro.text !== "string" || !s.outro.text.trim() || s.outro.text.length > 20)) errors.push("outro.text: must be 1 to 20 characters");
+    }
+  }
+
   // chain (optional)
   if (s.chain !== undefined) {
     if (!isObj(s.chain)) errors.push('chain: must be an object like {"enabled": true, "windowSeconds": 1.5}');
@@ -250,5 +264,6 @@ export const validateAgainstVideo = (spec: Spec, seconds: number): string[] => {
   spec.captions.forEach((c) => c.to > seconds && errors.push(`caption ${c.id}: ends at ${c.to}s but the video is only ${seconds.toFixed(3)}s long`));
   spec.zooms.forEach((z, i) => z.to > seconds && errors.push(`zoom ${i + 1}: ends at ${z.to}s but the video is only ${seconds.toFixed(3)}s long`));
   spec.ending.forEach((e) => e.seconds > seconds && errors.push(`ending: fade of ${e.seconds}s is longer than the video`));
+  if (spec.outro && spec.outro.secondsBeforeEnd >= seconds) errors.push(`outro: starts ${spec.outro.secondsBeforeEnd}s before the end, but the video is only ${seconds.toFixed(3)}s long`);
   return errors;
 };

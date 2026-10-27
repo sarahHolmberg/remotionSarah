@@ -1,8 +1,8 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (chain: bubbles that start close together stay up together, linked; JSON "chain", slider in the editor tab)
+// NOT NEW: existing file, changed (bubbles sit in a random direction and distance from their cells; the outro bubble at the end, JSON "outro", slider in the preview tab)
 
 import {useMemo} from "react";
-import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
+import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, random, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
 import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the JSON can name for now
 import {cellRect} from "./gridCell";
 import {blobsAt, chainGroups, chainSchedule, type ChainBlob} from "./bubbleTimeline";
@@ -23,6 +23,15 @@ const BUBBLE_H_PAD = 0.55; // extra half-height, in text sizes
 const POP_FILE = "universfield-bubble-pop-05-323639.mp3"; // file in /public
 const POP_HIT = 0.26; // seconds into the file where the actual "pop" sits (it starts with a short swell, the pop is at about 0.26s)
 const POP_VOLUME = 1; // 0 to 1
+
+// ---- OUTRO: the end bubble (change here; how long before the end it starts is the slider in the preview tab, JSON "outro") ----
+// As a share of the outro time: the ball pops up in the middle, grows until it fills the screen while three dots bounce,
+// then the dots turn into the text, which pops in with the pop sound and stays until the end.
+const OUTRO_POP = 0.15; // ball pops up (0 to this)
+const OUTRO_FILL = 0.55; // ... grows until it covers the whole screen (OUTRO_POP to this)
+const OUTRO_TEXT = 0.6; // the dots are gone and the text pops in
+const OUTRO_TEXT_POP = 0.15; // time the text takes to pop in
+const OUTRO_START_SIZE = 0.28; // bubble half-width after the pop, as a fraction of the video width
 
 // ---- NAME EFFECT: blur, then zoom, hold, reset (change here) ----
 const NAME_BLUR = 0.006; // how blurry the video gets behind the name, as a fraction of the video width (1080px wide = about 6.5px)
@@ -55,8 +64,11 @@ const LINK_THICK = 0.55; // thickness of the link between chained bubbles, as a 
 const CHAIN_GAP_CELLS = 0.25; // bubbles of one chain keep at least this much room between them, in grid cells
 
 // ---- BUBBLE PLACEMENT (change here) ----
-// The caption's cells are where the TAIL points. The bubble sits beside them: leaning toward the middle of the frame, a bit upward.
-const PLACE_UP = 0.8; // how strongly bubbles prefer to sit above their cell (0 = only toward the middle of the frame)
+// The caption's cells are where the TAIL points. The bubble sits in a random direction from them, at a random distance:
+// the tail is at least style.tail.maxLengthCells long, and up to (1 + PLACE_FAR) times that.
+// "Random" is fixed per caption id (Remotion's random(seed)), so the preview and every render frame agree.
+const PLACE_FAR = 2; // 0 = always the shortest tail, 2 = up to 3x as long
+const PLACE_TRIES = 16; // directions tried until the bubble fits in the frame without being pushed back in
 
 // Distance from the center of an ellipse to its edge, in direction (ux, uy) (a unit vector)
 const edgeDist = (rx: number, ry: number, ux: number, uy: number) => 1 / Math.hypot(ux / rx, uy / ry);
@@ -97,18 +109,22 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
       const fs = isName ? font * NAME_TEXT_SCALE : font; // text size in px
       const lh = isName ? lineH * NAME_TEXT_SCALE : lineH; // distance between the lines
 
-      // The tails point at the cells; the bubble sits one tail length away from them, toward the middle of the frame and a bit up
+      // The tails point at the cells; the bubble sits in a random direction and distance from them (the first try that fits in the frame)
       const tips = cap.cells.map((name) => {
         const r = cellRect(name, width, height, N);
         return {x: r.cx, y: r.cy};
       });
       const target = centerOf(cap.cells, width, height, N);
-      let ux = (width / 2 - target.x) / (width / 2);
-      let uy = (height / 2 - target.y) / (height / 2) - PLACE_UP;
-      const ul = Math.hypot(ux, uy);
-      [ux, uy] = ul > 0.01 ? [ux / ul, uy / ul] : [0, -1];
-      const away = cw * style.tail.maxLengthCells + edgeDist(rx, ry, ux, uy);
-      let c = {x: target.x + ux * away, y: target.y + uy * away};
+      const overflow = (q: P) => Math.max(0, margin + rx - q.x) + Math.max(0, q.x + rx - (width - margin)) + Math.max(0, margin + ry - q.y) + Math.max(0, q.y + ry - (height - margin));
+      let c = target;
+      let best = Infinity;
+      for (let a = 0; a < PLACE_TRIES && best > 0; a++) {
+        const ang = random(`bubble-${cap.id}-dir-${a}`) * Math.PI * 2;
+        const [ux, uy] = [Math.cos(ang), Math.sin(ang)];
+        const away = cw * style.tail.maxLengthCells * (1 + random(`bubble-${cap.id}-far-${a}`) * PLACE_FAR) + edgeDist(rx, ry, ux, uy);
+        const q = {x: target.x + ux * away, y: target.y + uy * away};
+        if (overflow(q) < best) [c, best] = [q, overflow(q)]; // the try that sticks out of the frame the least
+      }
       if (!isName) {
         // keep the bubble in the frame; the tail then stretches to reach its cell
         c = {x: Math.min(Math.max(c.x, margin + rx), width - margin - rx), y: Math.min(Math.max(c.y, margin + ry), height - margin - ry)};
@@ -261,6 +277,14 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const popFrame = Math.round((captions[0].from - tm.firstOpenSeconds + (pop?.offsetSeconds ?? 0) - POP_HIT) * fps); // frame where the FILE starts (can be before 0)
   if (popOn && frame === Math.max(0, popFrame)) console.log(`[Comic] pop sound: file starts at frame ${popFrame}, the pop itself at ${((popFrame / fps) + POP_HIT).toFixed(3)}s (offset ${pop?.offsetSeconds ?? 0}s)`);
 
+  // outro: where we are in it (u from 0 to 1), null before it starts or when it is off
+  const outroSec = spec.outro?.secondsBeforeEnd ?? 0;
+  const outroStart = durationInFrames / fps - outroSec;
+  const outroU = outroSec > 0 && t >= outroStart ? (t - outroStart) / outroSec : null;
+  const outroText = (spec.outro?.text ?? "MIRRORS").trim();
+  const outroPopFrame = Math.round((outroStart + OUTRO_TEXT * outroSec - POP_HIT) * fps); // the pop lands as the text pops in
+  if (outroSec > 0 && frame === Math.round(outroStart * fps)) console.log(`[Comic] outro starts at ${outroStart.toFixed(3)}s (${outroSec}s before the end), text "${outroText}" at ${(outroStart + OUTRO_TEXT * outroSec).toFixed(3)}s`);
+
   const fade = spec.ending.find((e) => e.type === "fadeToBlack");
   const fadeStart = durationInFrames - (fade ? fade.seconds * fps : 0);
   const endFade = fade ? interpolate(frame, [fadeStart, durationInFrames - 1], [1, 0], clamp) : 1;
@@ -348,6 +372,49 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     );
   };
 
+  // the outro bubble: one ellipse in the middle (outline + fill), the bouncing dots, then the text
+  const outroLayer = () => {
+    if (outroU === null) return null;
+    const u = outroU;
+    const ease = (from: number, to: number, e = Easing.inOut(Easing.cubic)) => interpolate(u, [from, to], [0, 1], {...clamp, easing: e});
+    const rx0 = width * OUTRO_START_SIZE;
+    const ry0 = rx0 * 0.72;
+    const fill = ease(OUTRO_POP, OUTRO_FILL); // 0 = popped size, 1 = covers the screen (an ellipse 0.75 x the frame reaches past the corners)
+    const pop = ease(0, OUTRO_POP, Easing.out(Easing.back(1.8)));
+    const rx = (rx0 + (width * 0.75 - rx0) * fill) * pop;
+    const ry = (ry0 + (height * 0.75 - ry0) * fill) * pop;
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const dotsOn = u >= OUTRO_POP * 0.6 && u < OUTRO_TEXT;
+    const dotScale = 1 - ease(OUTRO_TEXT - 0.05, OUTRO_TEXT); // the dots shrink away just before the text
+    const dotR = width * 0.025;
+    const dots = dotsOn
+      ? [0, 1, 2].map((i) => {
+          const bounce = Math.max(0, Math.sin(2 * Math.PI * (t * 2.5) - i * 0.9)) * dotR * 1.2; // typing dots, one after the other
+          return <circle key={i} cx={cx + (i - 1) * dotR * 3} cy={cy - bounce} r={dotR * dotScale} fill={style.ink} />;
+        })
+      : null;
+
+    const fs = Math.min((width * 0.85) / (outroText.length * ADV), height * 0.16);
+    const textP = ease(OUTRO_TEXT, OUTRO_TEXT + OUTRO_TEXT_POP, Easing.out(Easing.back(2.5)));
+    const text =
+      u >= OUTRO_TEXT ? (
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontFamily={fontFamily} fontWeight={700} fontSize={fs} fill={style.ink} transform={`translate(${cx} ${cy}) scale(${Math.max(textP, 0.001)}) translate(${-cx} ${-cy})`}>
+          {outroText}
+        </text>
+      ) : null;
+
+    return (
+      <g>
+        <ellipse cx={cx} cy={cy} rx={rx + lw} ry={ry + lw} fill={style.ink} />
+        <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={style.fill} />
+        {dots}
+        {text}
+      </g>
+    );
+  };
+
   // the photo inside the picture bubble (a Remotion <Img> inside the SVG, so a render waits until it is loaded)
   const pictureLayer = () => {
     const blob = blobs.find((b) => b.kind === "cell" && geo.items[b.k].pic);
@@ -370,6 +437,11 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
 
   return (
     <AbsoluteFill style={{background: "black"}}>
+      {outroSec > 0 && (
+        <Sequence from={Math.max(0, outroPopFrame)}>
+          <Audio src={staticFile(POP_FILE)} startFrom={Math.max(0, -outroPopFrame)} volume={POP_VOLUME} />
+        </Sequence>
+      )}
       {popOn && (
         <Sequence from={Math.max(0, popFrame)}>
           <Audio src={staticFile(POP_FILE)} startFrom={Math.max(0, -popFrame)} volume={POP_VOLUME} />
@@ -439,6 +511,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
             </g>
           );
         })}
+        {outroLayer()}
       </svg>
     </AbsoluteFill>
   );

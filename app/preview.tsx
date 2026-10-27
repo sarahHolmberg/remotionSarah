@@ -1,5 +1,5 @@
 // app/preview.tsx
-// NOT NEW: existing file, changed (uploads go in 8 MB pieces so the export also works on Cloud Run)
+// NOT NEW: existing file, changed (adds the "Outro starts" slider: how many seconds before the end the end bubble comes; it goes into the Player and the export as "outro")
 
 // Tab 2: plays the video with the captions on top (the same ComicEdit that Remotion renders), updates live when the editor tab sends new JSON, a new video or a new picture.
 import {Component, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -8,7 +8,7 @@ import {Player} from "@remotion/player";
 import {getVideoMetadata} from "@remotion/media-utils";
 import {staticFile} from "remotion";
 import {ComicEdit} from "../src/ComicEdit";
-import {NAME_ZOOM, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
+import {NAME_ZOOM, OUTRO, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, loadPicture, loadVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 
@@ -39,6 +39,18 @@ class Boundary extends Component<{children: ReactNode}, {err: Error | null}> {
 }
 
 const NAME_ZOOM_KEY = "comic-name-zoom"; // the slider value is kept in the browser, so a reload keeps it
+const OUTRO_KEY = "comic-outro"; // same for the outro slider
+
+// a number kept in the browser, or null when there is none
+const loadNumber = (key: string): number | null => {
+  try {
+    const v = localStorage.getItem(key);
+    const n = v === null ? NaN : Number(v);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+};
 
 type Meta = {w: number; h: number; seconds: number};
 type Uploaded = {url: string; name: string};
@@ -91,15 +103,9 @@ const Preview = () => {
   const [metaErr, setMetaErr] = useState("");
   const [shown, setShown] = useState<{spec: Spec; meta: Meta; src: string} | null>(null); // last good version stays on screen
   // Name zoom slider: null = not touched yet, then the JSON's "nameZoom" (or the default) is used
-  const [nameZoomPct, setNameZoomPct] = useState<number | null>(() => {
-    try {
-      const v = localStorage.getItem(NAME_ZOOM_KEY);
-      const n = v === null ? NaN : Number(v);
-      return Number.isFinite(n) ? n : null;
-    } catch {
-      return null;
-    }
-  });
+  const [nameZoomPct, setNameZoomPct] = useState<number | null>(() => loadNumber(NAME_ZOOM_KEY));
+  // Outro slider: seconds before the end the end bubble starts (0 = no outro); null = not touched yet, then the JSON's "outro" (or the default) is used
+  const [outroSec, setOutroSec] = useState<number | null>(() => loadNumber(OUTRO_KEY));
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
   const [renderLog, setRenderLog] = useState<string[]>([]);
@@ -174,11 +180,22 @@ const Preview = () => {
     };
   }, [src]);
 
-  // the spec with the slider applied: this is what the Player shows and what the export sends
+  // the spec with the sliders applied: this is what the Player shows and what the export sends
+  const outroOf = (sp: Spec) => outroSec ?? sp.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds;
   const withNameZoom = (sp: Spec): Spec => ({
     ...sp,
     nameZoom: {percent: nameZoomPct ?? sp.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: sp.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
+    outro: {secondsBeforeEnd: outroOf(sp), text: sp.outro?.text ?? OUTRO.defaultText},
   });
+  const moveOutro = (v: number) => {
+    console.log(`[Preview] outro slider: ${v}s before the end`);
+    setOutroSec(v);
+    try {
+      localStorage.setItem(OUTRO_KEY, String(v));
+    } catch (e) {
+      console.error("[Preview] cannot save the outro time", e);
+    }
+  };
   const moveNameZoom = (v: number) => {
     console.log(`[Preview] name zoom slider: ${v}%`);
     setNameZoomPct(v);
@@ -296,6 +313,11 @@ const Preview = () => {
         <span>Name zoom</span>
         <input type="range" min={NAME_ZOOM.min} max={NAME_ZOOM.max} step={NAME_ZOOM.step} value={nameZoomPct ?? spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent} onChange={(e) => moveNameZoom(Number(e.target.value))} style={{width: 180}} />
         <span style={{width: 48}}>{(nameZoomPct ?? spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent).toFixed(1)}%</span>
+      </div>
+      <div style={{display: "flex", gap: 10, alignItems: "center", fontSize: 13}}>
+        <span>Outro starts</span>
+        <input type="range" min={OUTRO.min} max={Math.min(OUTRO.max, Math.floor(m.seconds * 10) / 10 - OUTRO.step)} step={OUTRO.step} value={outroOf(spec)} onChange={(e) => moveOutro(Number(e.target.value))} style={{width: 180}} />
+        <span style={{width: 110}}>{outroOf(spec) > 0 ? `${outroOf(spec).toFixed(1)}s before end` : "off"}</span>
       </div>
       <div style={{display: "flex", gap: 12, alignItems: "center"}}>
         <button onClick={exportVideo} disabled={exporting} style={{padding: "8px 16px", fontSize: 14, cursor: exporting ? "wait" : "pointer"}}>
