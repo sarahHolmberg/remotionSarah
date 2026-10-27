@@ -1,5 +1,5 @@
 // app/preview.tsx
-// NOT NEW: existing file, changed (adds the "Outro starts" slider: how many seconds before the end the end bubble comes; it goes into the Player and the export as "outro")
+// NOT NEW: existing file, changed (no sliders here any more: name zoom and outro moved to the editor tab, the JSON carries every setting)
 
 // Tab 2: plays the video with the captions on top (the same ComicEdit that Remotion renders), updates live when the editor tab sends new JSON, a new video or a new picture.
 import {Component, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -8,7 +8,7 @@ import {Player} from "@remotion/player";
 import {getVideoMetadata} from "@remotion/media-utils";
 import {staticFile} from "remotion";
 import {ComicEdit} from "../src/ComicEdit";
-import {NAME_ZOOM, OUTRO, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
+import {applyDefaults, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, loadPicture, loadVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 
@@ -37,20 +37,6 @@ class Boundary extends Component<{children: ReactNode}, {err: Error | null}> {
     return this.props.children;
   }
 }
-
-const NAME_ZOOM_KEY = "comic-name-zoom"; // the slider value is kept in the browser, so a reload keeps it
-const OUTRO_KEY = "comic-outro"; // same for the outro slider
-
-// a number kept in the browser, or null when there is none
-const loadNumber = (key: string): number | null => {
-  try {
-    const v = localStorage.getItem(key);
-    const n = v === null ? NaN : Number(v);
-    return Number.isFinite(n) ? n : null;
-  } catch {
-    return null;
-  }
-};
 
 type Meta = {w: number; h: number; seconds: number};
 type Uploaded = {url: string; name: string};
@@ -102,10 +88,6 @@ const Preview = () => {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [metaErr, setMetaErr] = useState("");
   const [shown, setShown] = useState<{spec: Spec; meta: Meta; src: string} | null>(null); // last good version stays on screen
-  // Name zoom slider: null = not touched yet, then the JSON's "nameZoom" (or the default) is used
-  const [nameZoomPct, setNameZoomPct] = useState<number | null>(() => loadNumber(NAME_ZOOM_KEY));
-  // Outro slider: seconds before the end the end bubble starts (0 = no outro); null = not touched yet, then the JSON's "outro" (or the default) is used
-  const [outroSec, setOutroSec] = useState<number | null>(() => loadNumber(OUTRO_KEY));
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
   const [renderLog, setRenderLog] = useState<string[]>([]);
@@ -180,32 +162,6 @@ const Preview = () => {
     };
   }, [src]);
 
-  // the spec with the sliders applied: this is what the Player shows and what the export sends
-  const outroOf = (sp: Spec) => outroSec ?? sp.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds;
-  const withNameZoom = (sp: Spec): Spec => ({
-    ...sp,
-    nameZoom: {percent: nameZoomPct ?? sp.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: sp.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
-    outro: {secondsBeforeEnd: outroOf(sp), text: sp.outro?.text ?? OUTRO.defaultText},
-  });
-  const moveOutro = (v: number) => {
-    console.log(`[Preview] outro slider: ${v}s before the end`);
-    setOutroSec(v);
-    try {
-      localStorage.setItem(OUTRO_KEY, String(v));
-    } catch (e) {
-      console.error("[Preview] cannot save the outro time", e);
-    }
-  };
-  const moveNameZoom = (v: number) => {
-    console.log(`[Preview] name zoom slider: ${v}%`);
-    setNameZoomPct(v);
-    try {
-      localStorage.setItem(NAME_ZOOM_KEY, String(v));
-    } catch (e) {
-      console.error("[Preview] cannot save the name zoom", e);
-    }
-  };
-
   const videoErrors = parsed.spec && meta ? validateAgainstVideo(parsed.spec, meta.seconds) : [];
   const errors = [...parsed.errors, ...videoErrors, ...(metaErr ? [metaErr] : [])];
   if (errors.length) console.log(`[Preview] ${errors.length} problem(s) blocking an update:`, errors);
@@ -222,7 +178,7 @@ const Preview = () => {
     if (!shown || exporting) return;
     setExporting(true);
     setRenderLog([]);
-    let spec = withNameZoom(shown.spec);
+    let spec = applyDefaults(shown.spec); // the JSON with the settings it does not have yet (the editor shows the same values)
     try {
       if (uploaded) {
         setExportMsg("Uploading the video...");
@@ -309,16 +265,6 @@ const Preview = () => {
           {errors.length > 1 ? ` (+${errors.length - 1} more, see the editor tab)` : ""}
         </div>
       )}
-      <div style={{display: "flex", gap: 10, alignItems: "center", fontSize: 13}}>
-        <span>Name zoom</span>
-        <input type="range" min={NAME_ZOOM.min} max={NAME_ZOOM.max} step={NAME_ZOOM.step} value={nameZoomPct ?? spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent} onChange={(e) => moveNameZoom(Number(e.target.value))} style={{width: 180}} />
-        <span style={{width: 48}}>{(nameZoomPct ?? spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent).toFixed(1)}%</span>
-      </div>
-      <div style={{display: "flex", gap: 10, alignItems: "center", fontSize: 13}}>
-        <span>Outro starts</span>
-        <input type="range" min={OUTRO.min} max={Math.min(OUTRO.max, Math.floor(m.seconds * 10) / 10 - OUTRO.step)} step={OUTRO.step} value={outroOf(spec)} onChange={(e) => moveOutro(Number(e.target.value))} style={{width: 180}} />
-        <span style={{width: 110}}>{outroOf(spec) > 0 ? `${outroOf(spec).toFixed(1)}s before end` : "off"}</span>
-      </div>
       <div style={{display: "flex", gap: 12, alignItems: "center"}}>
         <button onClick={exportVideo} disabled={exporting} style={{padding: "8px 16px", fontSize: 14, cursor: exporting ? "wait" : "pointer"}}>
           {exporting ? "Exporting..." : "Export video"}
@@ -332,7 +278,7 @@ const Preview = () => {
         <Player
           key={`${shown.src}-${m.w}x${m.h}-${spec.fps}`}
           component={ComicEdit}
-          inputProps={{...withNameZoom(spec), videoSrc: shown.src, pictureSrc: picture?.url}}
+          inputProps={{...applyDefaults(spec), videoSrc: shown.src, pictureSrc: picture?.url}}
           durationInFrames={Math.ceil(m.seconds * spec.fps)}
           fps={spec.fps}
           compositionWidth={m.w}

@@ -1,5 +1,5 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (bubbles sit in a random direction and distance from their cells; the outro bubble at the end, JSON "outro", slider in the preview tab)
+// NOT NEW: existing file, changed (the impact burst behind chosen bubbles, JSON "impact"; the outro and name zoom sliders moved to the editor tab)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, random, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
@@ -24,7 +24,10 @@ const POP_FILE = "universfield-bubble-pop-05-323639.mp3"; // file in /public
 const POP_HIT = 0.26; // seconds into the file where the actual "pop" sits (it starts with a short swell, the pop is at about 0.26s)
 const POP_VOLUME = 1; // 0 to 1
 
-// ---- OUTRO: the end bubble (change here; how long before the end it starts is the slider in the preview tab, JSON "outro") ----
+// ---- IMPACT BURST (change here; the size is a slider in the editor tab, JSON "impact") ----
+const IMPACT_FILE = "impact-burst.png"; // file in /public: white burst on a see-through background (made from burst.png)
+
+// ---- OUTRO: the end bubble (change here; how long before the end it starts is the slider in the editor tab, JSON "outro") ----
 // As a share of the outro time: the ball pops up in the middle, grows until it fills the screen while three dots bounce,
 // then the dots turn into the text, which pops in with the pop sound and stays until the end.
 const OUTRO_POP = 0.15; // ball pops up (0 to this)
@@ -207,7 +210,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const origin = live ? live.origin : {x: width / 2, y: height / 2};
 
   // The camera moves are a list of steps in time order. Every step takes the camera from the scale the last step left it at to its own scale.
-  //  - name effect (JSON "nameZoom"; the slider is in the preview tab): the video blurs, then zooms in toward the name bubble and holds;
+  //  - name effect (JSON "nameZoom"; the slider is in the editor tab): the video blurs, then zooms in toward the name bubble and holds;
   //    blur and zoom reset together, finishing just before the next text starts
   //  - captionZoom: at every NORMAL bubble (not the name bubble), alternating in, out, in, out...
   // A step is drawn as translate + scale around a focus point f (x' = f + s * (x - f)), so a new focus never makes the picture jump.
@@ -415,6 +418,25 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     );
   };
 
+  // impact bursts: behind the bubbles of the captions listed in "impact.captions" (missing = the first normal caption), as big as size x the bubble width
+  const impactSize = spec.impact?.size ?? 0;
+  const impactIds = spec.impact?.captions ?? [captions.find((c) => c.id !== NAME_BUBBLE_ID)?.id ?? captions[0].id];
+  const impactLayer = () =>
+    impactSize > 0
+      ? blobs.map((b, i) => {
+          if (b.kind !== "cell" || !impactIds.includes(captions[b.k].id)) return null;
+          const g = geo.items[b.k];
+          const d = impactSize * 2 * g.rx * b.o * b.sc; // grows and shrinks with its bubble
+          if (d < 2) return null;
+          const turn = random(`impact-${captions[b.k].id}`) * 360; // every burst turned its own way
+          return (
+            <foreignObject key={`impact${i}`} x={g.c.x - d / 2} y={g.c.y - d / 2} width={d} height={d}>
+              <Img src={staticFile(IMPACT_FILE)} style={{width: "100%", height: "100%", objectFit: "contain", transform: `rotate(${turn}deg)`, filter: `drop-shadow(0 0 ${Math.max(1, lw)}px ${style.ink})`}} />
+            </foreignObject>
+          );
+        })
+      : null;
+
   // the photo inside the picture bubble (a Remotion <Img> inside the SVG, so a render waits until it is loaded)
   const pictureLayer = () => {
     const blob = blobs.find((b) => b.kind === "cell" && geo.items[b.k].pic);
@@ -456,6 +478,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
       </AbsoluteFill>
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
+        {impactLayer()}
         {blobs.length > 0 && (
           <g>
             {/* links first, so the bubbles sit on top of them; the ink pass first, so the fill pass hides the outline where a link enters a bubble */}

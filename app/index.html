@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- app/index.html -->
-<!-- NOT NEW: existing file, changed (Windows XP look, mobile first; the page and /editor.tsx script stay the same) -->
+<!-- NOT NEW: existing file, changed (styles for the two-column layout, the foldable JSON box and the profiles row) -->
 <html>
   <head>
     <meta charset="utf-8" />
@@ -22,7 +22,7 @@
       .desk { min-height: 100dvh; display: flex; flex-direction: column; padding: 6px 6px calc(54px + env(safe-area-inset-bottom)); }
       .win {
         flex: 1; display: flex; flex-direction: column; min-height: 0;
-        width: 100%; max-width: 980px; margin: 0 auto;
+        width: 100%; max-width: 1200px; margin: 0 auto;
         background: var(--beige); border: 3px solid var(--blue); border-top: 0; border-radius: 9px 9px 3px 3px;
         box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45); overflow: hidden;
       }
@@ -83,6 +83,22 @@
         background: linear-gradient(#1c4ec0, #3a76e0); box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.4);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
       }
+      /* two columns on wide screens (files + JSON | settings), one under the other on a phone */
+      .body.cols { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; overflow: auto; }
+      .stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+      .fold { cursor: pointer; color: var(--link); font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px; list-style: none; }
+      .fold::-webkit-details-marker { display: none; }
+      .fold::before { content: "▸"; color: #000; }
+      details[open] > .fold::before { content: "▾"; }
+      details[open] > .fold { margin-bottom: 8px; }
+      details .code { height: 280px; flex: none; resize: vertical; }
+      .hint { font-size: 12px; color: #555; font-weight: 400; }
+      select.file { min-height: 40px; font: inherit; }
+      .btn:disabled { color: #8a8a8a; cursor: default; box-shadow: none; }
+      @media (min-width: 900px) {
+        .body.cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
+      }
+
       /* wider screens: a real floating window */
       @media (min-width: 700px) {
         .desk { padding: 28px 28px 60px; }

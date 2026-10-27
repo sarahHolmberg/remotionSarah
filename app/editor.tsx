@@ -1,10 +1,10 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (adds the "Chain" group: a checkbox and the chain window slider that write "chain" into the JSON)
+// NOT NEW: existing file, changed (two columns: files + foldable JSON left, settings right; adds profiles, the impact, name zoom and outro sliders)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, POP_SOUND, validateSpec} from "../src/spec";
+import {applyDefaults, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME_ZOOM, OUTRO, POP_SOUND, PROFILE_KEYS, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 
@@ -29,8 +29,8 @@ const check = (text: string): {errors: string[]; warnings: string[]} => {
 
 // A slider with its name on the left and its value on the right (XP look comes from the existing .row / .file classes)
 const Slider = ({label, value, min, max, step, show, onChange, disabled}: {label: string; value: number; min: number; max: number; step: number; show: (v: number) => string; onChange: (v: number) => void; disabled: boolean}) => (
-  <div className="row">
-    <span style={{width: 120}}>{label}</span>
+  <div className="row" style={{flexWrap: "nowrap"}}>
+    <span style={{width: 104, flex: "none"}}>{label}</span>
     <input
       type="range"
       min={min}
@@ -39,9 +39,9 @@ const Slider = ({label, value, min, max, step, show, onChange, disabled}: {label
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(Number(e.target.value))}
-      style={{flex: 1, minWidth: 140, height: 32}}
+      style={{flex: 1, minWidth: 0, height: 32}}
     />
-    <span className="file" style={{flex: "none", width: 64, textAlign: "center"}}>{show(value)}</span>
+    <span className="file" style={{flex: "none", width: 64, padding: "8px 2px", textAlign: "center"}}>{show(value)}</span>
   </div>
 );
 
@@ -171,7 +171,66 @@ const Editor = () => {
     save({...obj, chain: {enabled: chainOn, windowSeconds: chainWindow, ...patch}});
   };
 
+  // name zoom, outro and impact: on by default, so the sliders show the same defaults the preview and the export use
+  const eff = obj ? applyDefaults(obj as Spec) : null;
+  const setNameZoom = (percent: number) => obj && eff && save({...obj, nameZoom: {...eff.nameZoom!, percent}});
+  const setOutro = (secondsBeforeEnd: number) => obj && eff && save({...obj, outro: {...eff.outro!, secondsBeforeEnd}});
+  const setImpact = (size: number) => obj && eff && save({...obj, impact: {...eff.impact!, size}});
+
+  // profiles: every slider setting under a name, kept on the server (GitHub when it has a token, see server/profiles.mjs)
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [profilesWhere, setProfilesWhere] = useState("");
+  const [picked, setPicked] = useState("");
+  const [newName, setNewName] = useState("");
+  const [profileMsg, setProfileMsg] = useState("");
+  const refreshProfiles = () =>
+    fetch("/api/profiles")
+      .then((r) => r.json())
+      .then((d: {profiles?: string[]; where?: string; error?: string}) => {
+        if (d.error) throw new Error(d.error);
+        console.log(`[Editor] profiles: ${d.profiles?.join(", ") || "none"} (in ${d.where})`);
+        setProfiles(d.profiles ?? []);
+        setProfilesWhere(d.where ?? "");
+        setPicked((p) => p || d.profiles?.[0] || "");
+      })
+      .catch((e) => setProfileMsg(`Cannot list the profiles: ${e.message}`));
+  useEffect(() => void refreshProfiles(), []);
+  const loadProfile = async () => {
+    if (!obj || !picked) return;
+    try {
+      const r = await fetch(`/api/profiles/${encodeURIComponent(picked)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? r.status);
+      const next = {...obj};
+      PROFILE_KEYS.forEach((k) => (d[k] === undefined ? delete next[k] : (next[k] = d[k])));
+      save(next);
+      console.log(`[Editor] loaded profile ${picked}`);
+      setProfileMsg(`Loaded "${picked}".`);
+    } catch (e) {
+      setProfileMsg(`Cannot load "${picked}": ${(e as Error).message}`);
+    }
+  };
+  const saveProfile = async () => {
+    const name = newName.trim().replace(/\s+/g, "-");
+    if (!eff || !name) return;
+    const data = Object.fromEntries(PROFILE_KEYS.filter((k) => eff[k] !== undefined).map((k) => [k, eff[k]]));
+    try {
+      setProfileMsg(`Saving "${name}"...`);
+      const r = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? r.status);
+      console.log(`[Editor] saved profile ${name}`, data);
+      setProfileMsg(`Saved "${name}".`);
+      setNewName("");
+      setPicked(name);
+      refreshProfiles();
+    } catch (e) {
+      setProfileMsg(`Cannot save "${name}": ${(e as Error).message}`);
+    }
+  };
+
   const valid = errors.length === 0;
+  const [jsonOpen, setJsonOpen] = useState(() => !valid); // the JSON box starts folded away when there already is good JSON
   console.log(`[Editor] render: json ${valid ? "valid" : "invalid"}, video "${videoName}", picture "${pictureName}"`);
   return (
     <>
@@ -185,108 +244,141 @@ const Editor = () => {
             <span className="cb x" aria-hidden="true">✕</span>
           </div>
 
-          <div className="body">
-            <div className="group">
-              <span className="gtitle">1. Video</span>
-              <div className="row">
-                <label className="btn">
-                  Browse...
-                  <input type="file" accept="video/*" hidden onChange={(e) => pickVideo(e.target.files?.[0])} />
-                </label>
-                <span className="file">{videoName}</span>
-              </div>
-            </div>
-
-            <div className="group">
-              <span className="gtitle">2. Picture for the name bubble</span>
-              <div className="row">
-                <label className="btn">
-                  Browse...
-                  <input type="file" accept="image/*" hidden onChange={(e) => pickPicture(e.target.files?.[0])} />
-                </label>
-                <span className="file">{pictureName}</span>
-              </div>
-              {fileErr && (
-                <div className="msg">
-                  <span className="ico err">✕</span>
-                  <span>{fileErr}</span>
+          <div className="body cols">
+            {/* left: the files and the JSON */}
+            <div className="stack">
+              <div className="group">
+                <span className="gtitle">1. Video</span>
+                <div className="row">
+                  <label className="btn">
+                    Browse...
+                    <input type="file" accept="video/*" hidden onChange={(e) => pickVideo(e.target.files?.[0])} />
+                  </label>
+                  <span className="file">{videoName}</span>
                 </div>
-              )}
+              </div>
+
+              <div className="group">
+                <span className="gtitle">2. Picture for the name bubble</span>
+                <div className="row">
+                  <label className="btn">
+                    Browse...
+                    <input type="file" accept="image/*" hidden onChange={(e) => pickPicture(e.target.files?.[0])} />
+                  </label>
+                  <span className="file">{pictureName}</span>
+                </div>
+                {fileErr && (
+                  <div className="msg">
+                    <span className="ico err">✕</span>
+                    <span>{fileErr}</span>
+                  </div>
+                )}
+              </div>
+
+              <details className="group" open={jsonOpen} onToggle={(e) => setJsonOpen(e.currentTarget.open)}>
+                <summary className="fold">
+                  3. JSON <span className={`ico ${valid ? "ok" : "err"}`}>{valid ? "✓" : "✕"}</span> <span className="hint">{jsonOpen ? "tap to fold away" : "tap to show / paste"}</span>
+                </summary>
+                <textarea
+                  className="code"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  autoCorrect="off"
+                  placeholder="Paste the JSON text here"
+                />
+              </details>
+
+              <div className="group">
+                <span className="gtitle">Messages</span>
+                <div className="status">
+                  {errors.map((e, i) => (
+                    <div className="msg" key={`e${i}`}>
+                      <span className="ico err">✕</span>
+                      <span>{e}</span>
+                    </div>
+                  ))}
+                  {warnings.map((w, i) => (
+                    <div className="msg" key={`w${i}`}>
+                      <span className="ico warn">!</span>
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                  {valid && (
+                    <div className="msg">
+                      <span className="ico ok">✓</span>
+                      <span>JSON is valid and sent to the preview.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="group grow">
-              <span className="gtitle">3. Paste the JSON here</span>
-              <textarea
-                className="code"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                placeholder="Paste the JSON text here"
-              />
-            </div>
-
-            <div className="group">
-              <span className="gtitle">Bubble size (saved in the JSON)</span>
-              <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
-              <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
+            {/* right: every setting (all saved in the JSON) */}
+            <div className="stack">
               {!obj && (
                 <div className="msg">
                   <span className="ico warn">!</span>
-                  <span>The sliders need readable JSON above.</span>
+                  <span>The settings need readable JSON (step 3).</span>
                 </div>
               )}
-            </div>
 
-            <div className="group">
-              <span className="gtitle">Chain (saved in the JSON)</span>
-              <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
-                <input type="checkbox" checked={chainOn} disabled={!obj} onChange={(e) => setChain({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
-                <span>Bubbles that start close together stay up together, linked like a chain</span>
-              </label>
-              <Slider label="Chain window" value={chainWindow} min={CHAIN.min} max={CHAIN.max} step={CHAIN.step} show={(v) => `${v.toFixed(1)} s`} onChange={(v) => setChain({windowSeconds: v})} disabled={!obj || !chainOn} />
-            </div>
+              <div className="group">
+                <span className="gtitle">Profiles</span>
+                <div className="row">
+                  <select className="file" value={picked} onChange={(e) => setPicked(e.target.value)} disabled={!profiles.length}>
+                    {profiles.length ? profiles.map((p) => <option key={p}>{p}</option>) : <option value="">No profiles saved yet</option>}
+                  </select>
+                  <button className="btn" onClick={loadProfile} disabled={!obj || !picked}>
+                    Load
+                  </button>
+                </div>
+                <div className="row">
+                  <input className="file" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name for the current settings" maxLength={40} style={{fontSize: 16}} />
+                  <button className="btn" onClick={saveProfile} disabled={!obj || !newName.trim()}>
+                    Save
+                  </button>
+                </div>
+                <span className="hint">{profileMsg || (profilesWhere && `Kept in ${profilesWhere}`)}</span>
+              </div>
 
-            <div className="group">
-              <span className="gtitle">Zoom (saved in the JSON)</span>
-              <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
-                <input type="checkbox" checked={zoomOn} disabled={!obj} onChange={(e) => setZoom({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
-                <span>Small zoom at every normal bubble (in, out, in, out...)</span>
-              </label>
-              <Slider label="Zoom amount" value={zoomPercent} min={CAPTION_ZOOM.min} max={CAPTION_ZOOM.max} step={CAPTION_ZOOM.step} show={(v) => `${v.toFixed(1)}%`} onChange={(v) => setZoom({percent: v})} disabled={!obj || !zoomOn} />
-            </div>
+              <div className="group">
+                <span className="gtitle">Bubbles</span>
+                <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
+                <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
+                <Slider label="Impact burst" value={eff?.impact?.size ?? IMPACT.defaultSize} min={IMPACT.min} max={IMPACT.max} step={IMPACT.step} show={(v) => (v > 0 ? `x${v.toFixed(2)}` : "off")} onChange={setImpact} disabled={!obj} />
+                <span className="hint">Impact burst: behind caption {eff?.impact?.captions?.join(", ") ?? "#2 (the first normal bubble)"}, as big as this many bubble widths.</span>
+              </div>
 
-            <div className="group">
-              <span className="gtitle">Pop sound (saved in the JSON)</span>
-              <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
-                <input type="checkbox" checked={popOn} disabled={!obj} onChange={(e) => setPop({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
-                <span>Play the bubble pop sound (needs the mp3 in the public folder)</span>
-              </label>
-              <Slider label="Sound offset" value={popOffset} min={POP_SOUND.min} max={POP_SOUND.max} step={POP_SOUND.step} show={(v) => `${v > 0 ? "+" : ""}${Math.round(v * 1000)} ms`} onChange={(v) => setPop({offsetSeconds: v})} disabled={!obj || !popOn} />
-            </div>
+              <div className="group">
+                <span className="gtitle">Chain</span>
+                <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
+                  <input type="checkbox" checked={chainOn} disabled={!obj} onChange={(e) => setChain({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
+                  <span>Bubbles that start close together stay up together, linked</span>
+                </label>
+                <Slider label="Chain window" value={chainWindow} min={CHAIN.min} max={CHAIN.max} step={CHAIN.step} show={(v) => `${v.toFixed(1)} s`} onChange={(v) => setChain({windowSeconds: v})} disabled={!obj || !chainOn} />
+              </div>
 
-            <div className="group">
-              <span className="gtitle">Messages</span>
-              <div className="status">
-                {errors.map((e, i) => (
-                  <div className="msg" key={`e${i}`}>
-                    <span className="ico err">✕</span>
-                    <span>{e}</span>
-                  </div>
-                ))}
-                {warnings.map((w, i) => (
-                  <div className="msg" key={`w${i}`}>
-                    <span className="ico warn">!</span>
-                    <span>{w}</span>
-                  </div>
-                ))}
-                {valid && (
-                  <div className="msg">
-                    <span className="ico ok">✓</span>
-                    <span>JSON is valid and sent to the preview.</span>
-                  </div>
-                )}
+              <div className="group">
+                <span className="gtitle">Zoom</span>
+                <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
+                  <input type="checkbox" checked={zoomOn} disabled={!obj} onChange={(e) => setZoom({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
+                  <span>Small zoom at every normal bubble (in, out, in...)</span>
+                </label>
+                <Slider label="Zoom amount" value={zoomPercent} min={CAPTION_ZOOM.min} max={CAPTION_ZOOM.max} step={CAPTION_ZOOM.step} show={(v) => `${v.toFixed(1)}%`} onChange={(v) => setZoom({percent: v})} disabled={!obj || !zoomOn} />
+                <Slider label="Name zoom" value={eff?.nameZoom?.percent ?? NAME_ZOOM.defaultPercent} min={NAME_ZOOM.min} max={NAME_ZOOM.max} step={NAME_ZOOM.step} show={(v) => (v > 0 ? `${v.toFixed(1)}%` : "off")} onChange={setNameZoom} disabled={!obj} />
+              </div>
+
+              <div className="group">
+                <span className="gtitle">Pop sound and outro</span>
+                <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
+                  <input type="checkbox" checked={popOn} disabled={!obj} onChange={(e) => setPop({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
+                  <span>Pop sound at the first bubble</span>
+                </label>
+                <Slider label="Sound offset" value={popOffset} min={POP_SOUND.min} max={POP_SOUND.max} step={POP_SOUND.step} show={(v) => `${v > 0 ? "+" : ""}${Math.round(v * 1000)} ms`} onChange={(v) => setPop({offsetSeconds: v})} disabled={!obj || !popOn} />
+                <Slider label="Outro starts" value={eff?.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds} min={OUTRO.min} max={OUTRO.max} step={OUTRO.step} show={(v) => (v > 0 ? `${v.toFixed(1)} s` : "off")} onChange={setOutro} disabled={!obj} />
+                <span className="hint">Outro: seconds before the end the "{eff?.outro?.text ?? OUTRO.defaultText}" bubble comes (with the pop sound).</span>
               </div>
             </div>
           </div>

@@ -1,5 +1,5 @@
 // src/spec.ts
-// NOT NEW: existing file, changed (adds the optional "outro" {secondsBeforeEnd, text} and OUTRO, the limits of the outro slider in the preview tab)
+// NOT NEW: existing file, changed (adds the optional "impact" {size, captions}, IMPACT and PROFILE_KEYS; the outro slider moved to the editor tab)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -40,6 +40,7 @@ export type Spec = {
   captionZoom?: {enabled?: boolean; percent: number; seconds: number}; // optional: at every NORMAL bubble the camera nudges in, then out, then in... (enabled missing = on, false = off)
   nameZoom?: {percent: number; seconds: number}; // optional: extra zoom (with blur) toward the name bubble while it is on screen; percent 0 = off
   popSound?: {enabled?: boolean; offsetSeconds: number}; // optional: the bubble pop sound at the first bubble; offset moves it earlier (-) or later (+); enabled missing = on, false = off
+  impact?: {size: number; captions?: number[]}; // optional: the impact burst (public/impact-burst.png) behind the listed captions' bubbles (missing = the first normal caption); size = times the bubble width, 0 = off
   outro?: {secondsBeforeEnd: number; text?: string}; // optional: the end bubble (center, fills the screen, three dots turn into the text, pop sound); secondsBeforeEnd 0 = off
   chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
@@ -51,13 +52,19 @@ export const BUBBLE_SCALE = {min: 0.7, max: 2.5, step: 0.05, default: 1};
 // Limits and start values of the zoom slider / checkbox (the editor tab uses the same numbers)
 export const CAPTION_ZOOM = {min: 0.5, max: 10, step: 0.5, defaultPercent: 3, defaultSeconds: 0.3};
 
-// Limits and start values of the name zoom slider (the preview tab uses the same numbers)
+// Limits and start values of the name zoom slider (the editor tab uses the same numbers)
 export const NAME_ZOOM = {min: 0, max: 15, step: 0.5, defaultPercent: 4, defaultSeconds: 0.5};
 
 // Limits and start value of the chain window slider (the editor tab uses the same numbers)
 export const CHAIN = {min: 0.5, max: 4, step: 0.1, defaultSeconds: 1.5};
 
-// Limits and start values of the outro slider (the preview tab uses the same numbers); 0 = no outro
+// Limits and start value of the impact size slider (the editor tab uses the same numbers); 0 = no impact burst
+export const IMPACT = {min: 0, max: 4, step: 0.05, defaultSize: 1.5};
+
+// The settings a profile saves and loads (everything the sliders in the editor tab change)
+export const PROFILE_KEYS = ["bubbleScale", "captionZoom", "popSound", "chain", "nameZoom", "outro", "impact"] as const;
+
+// Limits and start values of the outro slider (the editor tab uses the same numbers); 0 = no outro
 export const OUTRO = {min: 0, max: 5, step: 0.1, defaultSeconds: 1, defaultText: "MIRRORS"};
 
 // Limits of the pop sound offset slider (the editor tab uses the same numbers)
@@ -86,7 +93,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -226,6 +233,16 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
     }
   }
 
+  // impact (optional)
+  if (s.impact !== undefined) {
+    if (!isObj(s.impact)) errors.push('impact: must be an object like {"size": 1.5}');
+    else {
+      keys(s.impact, ["size", "captions"], "impact");
+      num(s.impact.size, "impact.size", IMPACT.min, IMPACT.max);
+      if (s.impact.captions !== undefined && (!Array.isArray(s.impact.captions) || !s.impact.captions.every((x: unknown) => Number.isInteger(x)))) errors.push("impact.captions: must be a list of caption ids, like [3, 7]");
+    }
+  }
+
   // outro (optional)
   if (s.outro !== undefined) {
     if (!isObj(s.outro)) errors.push('outro: must be an object like {"secondsBeforeEnd": 1, "text": "MIRRORS"}');
@@ -267,3 +284,11 @@ export const validateAgainstVideo = (spec: Spec, seconds: number): string[] => {
   if (spec.outro && spec.outro.secondsBeforeEnd >= seconds) errors.push(`outro: starts ${spec.outro.secondsBeforeEnd}s before the end, but the video is only ${seconds.toFixed(3)}s long`);
   return errors;
 };
+// The settings the editor sliders show when the JSON does not have them yet; the preview and the export use the same values.
+// (bubbleScale, captionZoom, popSound and chain stay off when missing; these three are on by default.)
+export const applyDefaults = (spec: Spec): Spec => ({
+  ...spec,
+  nameZoom: {percent: spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: spec.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
+  outro: {secondsBeforeEnd: spec.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds, text: spec.outro?.text ?? OUTRO.defaultText},
+  impact: {size: spec.impact?.size ?? IMPACT.defaultSize, ...(spec.impact?.captions ? {captions: spec.impact.captions} : {})},
+});

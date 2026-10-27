@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import {spawn} from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import {makeProfileHandler} from "../server/profiles.mjs";
 
 const ROOT = process.cwd(); // run `npm run app` from the repo root
 const PROPS = "scripts/export.json"; // the JSON the render reads (your own scripts/edit.json is not touched)
@@ -18,10 +19,12 @@ const log = (m: string) => console.log(`[RenderApi] ${m}`);
 const renderApi = (): Plugin => ({
   name: "render-api",
   configureServer(server) {
+    const profiles = makeProfileHandler(ROOT); // saved editor settings (server/profiles.mjs)
     server.middlewares.use((req, res, next) => {
       const url = new URL(req.url ?? "", "http://x");
       if (!url.pathname.startsWith("/api/")) return next();
       log(`${req.method} ${url.pathname}`);
+      if (profiles(req, res, url)) return;
 
       // 1. the video picked in tab 1 (it only lives in the browser) -> public/, so the render can read it
       if (req.method === "POST" && url.pathname === "/api/upload") {
