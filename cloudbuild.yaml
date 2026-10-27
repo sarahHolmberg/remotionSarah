@@ -1,0 +1,32 @@
+# cloudbuild.yaml  (path: project root)
+# NEW FILE: what Cloud Build does on every push to main (the trigger points at this file):
+#   1. build the container from the Dockerfile
+#   2. store it in Artifact Registry (cloud-run-source-deploy, which keeps only the newest 2)
+#   3. deploy it to the Cloud Run service remotion-render (its settings and APP_PASSWORD stay as they are)
+# Without step 3 the site never changes, which is what happened before this file existed.
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/remotion-render:$COMMIT_SHA", "."]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/remotion-render:$COMMIT_SHA"]
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - remotion-render
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/remotion-render:$COMMIT_SHA
+      - --region=us-central1
+      - --quiet
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/remotion-render:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY # needed when the trigger runs as a service account
