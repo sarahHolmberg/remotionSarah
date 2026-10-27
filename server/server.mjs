@@ -14,7 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import {renderMedia, selectComposition} from "@remotion/renderer"; // installed with @remotion/cli, same version
 import {makeProfileHandler} from "./profiles.mjs";
-import {makeBufferHandler} from "./buffer.mjs";
+import {makeAyrshareHandler} from "./ayrshare.mjs";
 
 const ROOT = process.cwd(); // run from the repo root (the Dockerfile does)
 const DIST = path.join(ROOT, "dist"); // the built pages
@@ -26,7 +26,7 @@ const PASSWORD = process.env.APP_PASSWORD || "";
 const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY || 2); // 2 was the fastest on 2 CPUs in the Codespace test
 let busy = false;
 const profiles = makeProfileHandler(ROOT);
-const buffer = makeBufferHandler(OUT);
+const ayrshare = makeAyrshareHandler(OUT);
 
 const log = (m) => console.log(`[Server] ${m}`);
 
@@ -177,7 +177,7 @@ http
       return res.end(JSON.stringify({revision: process.env.K_REVISION ?? "local server"}));
     }
     if (profiles(req, res, url)) return;
-    if (buffer(req, res, url)) return;
+    if (ayrshare(req, res, url)) return;
     if (req.method === "POST" && url.pathname === "/api/upload") return upload(req, res, url);
     if (req.method === "POST" && url.pathname === "/api/render") return void render(req, res);
     if (req.method === "GET" && url.pathname === "/api/download") {
