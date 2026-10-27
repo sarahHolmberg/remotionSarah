@@ -215,7 +215,7 @@ const Editor = () => {
     const name = newName.trim().replace(/\s+/g, "-");
     if (!eff || !name) return;
     const data = Object.fromEntries(PROFILE_KEYS.filter((k) => eff[k] !== undefined).map((k) => [k, eff[k]]));
-    data.impact = {size: eff.impact?.size}; // the size only: where the bursts go belongs to each video
+    data.impact = {size: eff.impact?.size ?? IMPACT.defaultSize}; // the size only: where the bursts go belongs to each video
     try {
       setProfileMsg(`Saving "${name}"...`);
       const r = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
