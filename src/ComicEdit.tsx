@@ -1,11 +1,11 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (the tails point at the caption's cells and the bubble sits beside them; before, the bubble sat on the cells and every tail pointed at style.tail.defaultTarget)
+// NOT NEW: existing file, changed (chain: bubbles that start close together stay up together, linked; JSON "chain", slider in the editor tab)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
 import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the JSON can name for now
 import {cellRect} from "./gridCell";
-import {blobAt, schedule, type Blob} from "./bubbleTimeline";
+import {blobsAt, chainGroups, chainSchedule, type ChainBlob} from "./bubbleTimeline";
 import type {Caption, Spec} from "./spec";
 
 const {fontFamily} = loadFont("normal", {weights: ["700"]});
@@ -50,6 +50,10 @@ const centerOf = (cells: string[], w: number, h: number, n: number): P => {
   return {x: r.reduce((s, q) => s + q.cx, 0) / r.length, y: r.reduce((s, q) => s + q.cy, 0) / r.length};
 };
 
+// ---- CHAIN (change here; the chain window itself is a slider in the editor tab, JSON "chain") ----
+const LINK_THICK = 0.55; // thickness of the link between chained bubbles, as a fraction of the ball
+const CHAIN_GAP_CELLS = 0.25; // bubbles of one chain keep at least this much room between them, in grid cells
+
 // ---- BUBBLE PLACEMENT (change here) ----
 // The caption's cells are where the TAIL points. The bubble sits beside them: leaning toward the middle of the frame, a bit upward.
 const PLACE_UP = 0.8; // how strongly bubbles prefer to sit above their cell (0 = only toward the middle of the frame)
@@ -69,7 +73,10 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const normalScale = spec.bubbleScale?.normal ?? 1; // size slider of the normal bubbles (1 = as before); the whole bubble grows, words included
   const nameScale = spec.bubbleScale?.name ?? 1; // size slider of the name bubble; words, bubble and picture circle grow together
 
-  const sch = useMemo(() => schedule(captions, tm), [captions, tm]);
+  const chainWindow = spec.chain && spec.chain.enabled !== false ? spec.chain.windowSeconds : 0; // 0 = no chain, one bubble at a time
+  const groups = useMemo(() => chainGroups(captions, chainWindow), [captions, chainWindow]);
+  const sch = useMemo(() => chainSchedule(captions, groups, tm), [captions, groups, tm]);
+  if (frame === 0) console.log(`[Comic] chain: ${chainWindow ? `window ${chainWindow}s, groups ${groups.map((g) => g.map((k) => captions[k].id).join("+")).join(" | ")}` : "off"}`);
   const pictureUrl = spec.pictureSrc ?? (spec.picture ? staticFile(spec.picture.file) : undefined);
   if (frame === 0) console.log(`[Comic] bubble size: normal x${normalScale}, name x${nameScale}`);
   if (frame === 0) console.log(`[Comic] name bubble = caption #${NAME_BUBBLE_ID}, picture: ${pictureUrl ? (spec.pictureSrc ? "picked in the editor" : `public/${spec.picture?.file}`) : "NOT set (the top bubble stays empty)"}`);
@@ -129,6 +136,31 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     };
 
     const items = captions.map((cap) => build(cap, cap.id === NAME_BUBBLE_ID ? nameScale : normalScale));
+
+    // bubbles of one chain are on screen together: move a later bubble away from the earlier ones it would cover (its tails still reach its cells)
+    const gap = cw * CHAIN_GAP_CELLS;
+    groups.forEach((g) =>
+      g.forEach((k, j) => {
+        for (let pass = 0; pass < 3; pass++) {
+          g.slice(0, j).forEach((i) => {
+            const a = items[i];
+            const b = items[k];
+            const dx = b.c.x - a.c.x;
+            const dy = b.c.y - a.c.y;
+            const ox = a.rx + b.rx + gap - Math.abs(dx); // how much the two boxes overlap
+            const oy = a.ry + b.ry + gap - Math.abs(dy);
+            if (ox <= 0 || oy <= 0) return;
+            const side = (d: number, mid: number, at: number) => (d !== 0 ? Math.sign(d) : at < mid ? 1 : -1);
+            const mx = ox < oy ? side(dx, width / 2, b.c.x) * ox : 0; // the short way out
+            const my = ox < oy ? 0 : side(dy, height / 2, b.c.y) * oy;
+            const c = {x: Math.min(Math.max(b.c.x + mx, margin + b.rx), width - margin - b.rx), y: Math.min(Math.max(b.c.y + my, margin + b.ry), height - margin - b.ry)};
+            const pic = b.pic && {...b.pic, x: b.pic.x + c.x - b.c.x, y: b.pic.y + c.y - b.c.y};
+            items[k] = {...b, c, pic};
+            console.log(`[Comic] chain: #${captions[k].id} moved ${(c.x - b.c.x).toFixed(0)},${(c.y - b.c.y).toFixed(0)}px away from #${captions[i].id}`);
+          });
+        }
+      })
+    );
     // smooth curve from each bubble to the next: control point bows to the upper side
     const hops = items.slice(0, -1).map((a, k) => {
       const b = items[k + 1];
@@ -142,7 +174,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     });
     const zoomList = [...zooms].sort((a, b) => a.from - b.from).map((z) => ({...z, origin: centerOf(z.cells, width, height, N)}));
     return {cw, items, hops, zooms: zoomList};
-  }, [captions, style, zooms, N, width, height, normalScale, nameScale]);
+  }, [captions, style, zooms, N, width, height, normalScale, nameScale, groups]);
 
   // key moments, logged once each
   captions.forEach((cap, k) => {
@@ -223,7 +255,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   }
 
   // pop sound: the swell of the file plays while the ball inflates and the pop lands at the moment the ball is complete and bursts open into the bubble
-  // (same moment as in blobAt: first words minus firstOpenSeconds). The offset slider in the editor moves it. Audio starts on whole frames.
+  // (same moment as in blobsAt: first words minus firstOpenSeconds). The offset slider in the editor moves it. Audio starts on whole frames.
   const pop = spec.popSound;
   const popOn = !!pop && pop.enabled !== false;
   const popFrame = Math.round((captions[0].from - tm.firstOpenSeconds + (pop?.offsetSeconds ?? 0) - POP_HIT) * fps); // frame where the FILE starts (can be before 0)
@@ -234,12 +266,28 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const endFade = fade ? interpolate(frame, [fadeStart, durationInFrames - 1], [1, 0], clamp) : 1;
   if (fade && frame === Math.round(fadeStart)) console.log(`[Comic] fade to black starts (frame ${frame} of ${durationInFrames})`);
 
-  const blob = blobAt(t, captions, sch, tm);
+  const blobs = blobsAt(t, captions, sch, groups, tm);
+  const layered = [...blobs.filter((b) => b.kind === "link"), ...blobs.filter((b) => b.kind !== "link")]; // links under the bubbles
   const R = geo.cw * style.ballRadiusCells;
   const lw = geo.cw * style.outlineCells;
 
   // the whole bubble/ball/thread, drawn twice: wide in the ink color (the outline), then in the fill color
-  const draw = (b: Blob, color: string, grow: number) => {
+  const draw = (b: ChainBlob, color: string, grow: number) => {
+    // chain link: runs out of the previous bubble along the same curve a hop uses, then stays as a band between the two bubbles
+    if (b.kind === "link") {
+      const h = geo.hops[b.k - 1];
+      const w = R * LINK_THICK * b.v;
+      if (w < 0.3) return null;
+      const n = Math.max(2, Math.ceil(b.p * 40));
+      const pts = Array.from({length: n + 1}, (_, i) => bez(h.A, h.C, h.B, (b.p * i) / n));
+      const hp = pts[n];
+      return (
+        <>
+          <path d={`M ${pts.map((q) => `${q.x} ${q.y}`).join(" L ")}`} fill="none" stroke={color} strokeWidth={2 * w + 2 * grow} strokeLinecap="round" strokeLinejoin="round" />
+          {b.p < 1 && <circle cx={hp.x} cy={hp.y} r={R + grow} fill={color} />}
+        </>
+      );
+    }
     if (b.kind === "cell") {
       const g = geo.items[b.k];
       const rx = (R + (g.rx - R) * b.o) * b.sc + grow * b.sc;
@@ -302,6 +350,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
 
   // the photo inside the picture bubble (a Remotion <Img> inside the SVG, so a render waits until it is loaded)
   const pictureLayer = () => {
+    const blob = blobs.find((b) => b.kind === "cell" && geo.items[b.k].pic);
     if (!blob || blob.kind !== "cell" || !pictureUrl) return null;
     const g = geo.items[blob.k];
     if (!g.pic) return null;
@@ -335,10 +384,15 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
       </AbsoluteFill>
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
-        {blob && (
+        {blobs.length > 0 && (
           <g>
-            {draw(blob, style.ink, lw)}
-            {draw(blob, style.fill, 0)}
+            {/* links first, so the bubbles sit on top of them; the ink pass first, so the fill pass hides the outline where a link enters a bubble */}
+            {layered.map((b, i) => (
+              <g key={`ink${i}`}>{draw(b, style.ink, lw)}</g>
+            ))}
+            {layered.map((b, i) => (
+              <g key={`fill${i}`}>{draw(b, style.fill, 0)}</g>
+            ))}
           </g>
         )}
         {pictureLayer()}

@@ -1,5 +1,5 @@
 // src/spec.ts
-// NOT NEW: existing file, changed (feature 4: adds the optional "popSound" {enabled, offsetSeconds} and POP_SOUND, the limits of the sound offset slider in the editor tab; features 1 to 3 are unchanged)
+// NOT NEW: existing file, changed (adds the optional "chain" {enabled, windowSeconds} and CHAIN, the limits of the chain window slider in the editor tab)
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -40,6 +40,7 @@ export type Spec = {
   captionZoom?: {enabled?: boolean; percent: number; seconds: number}; // optional: at every NORMAL bubble the camera nudges in, then out, then in... (enabled missing = on, false = off)
   nameZoom?: {percent: number; seconds: number}; // optional: extra zoom (with blur) toward the name bubble while it is on screen; percent 0 = off
   popSound?: {enabled?: boolean; offsetSeconds: number}; // optional: the bubble pop sound at the first bubble; offset moves it earlier (-) or later (+); enabled missing = on, false = off
+  chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
 };
 
@@ -51,6 +52,9 @@ export const CAPTION_ZOOM = {min: 0.5, max: 10, step: 0.5, defaultPercent: 3, de
 
 // Limits and start values of the name zoom slider (the preview tab uses the same numbers)
 export const NAME_ZOOM = {min: 0, max: 15, step: 0.5, defaultPercent: 4, defaultSeconds: 0.5};
+
+// Limits and start value of the chain window slider (the editor tab uses the same numbers)
+export const CHAIN = {min: 0.5, max: 4, step: 0.1, defaultSeconds: 1.5};
 
 // Limits of the pop sound offset slider (the editor tab uses the same numbers)
 export const POP_SOUND = {min: -0.5, max: 0.5, step: 0.01, defaultOffset: 0};
@@ -78,7 +82,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -215,6 +219,16 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
       keys(s.popSound, ["enabled", "offsetSeconds"], "popSound");
       if (s.popSound.enabled !== undefined && typeof s.popSound.enabled !== "boolean") errors.push("popSound.enabled: must be true or false");
       num(s.popSound.offsetSeconds, "popSound.offsetSeconds", POP_SOUND.min, POP_SOUND.max);
+    }
+  }
+
+  // chain (optional)
+  if (s.chain !== undefined) {
+    if (!isObj(s.chain)) errors.push('chain: must be an object like {"enabled": true, "windowSeconds": 1.5}');
+    else {
+      keys(s.chain, ["enabled", "windowSeconds"], "chain");
+      if (s.chain.enabled !== undefined && typeof s.chain.enabled !== "boolean") errors.push("chain.enabled: must be true or false");
+      num(s.chain.windowSeconds, "chain.windowSeconds", CHAIN.min, CHAIN.max);
     }
   }
 

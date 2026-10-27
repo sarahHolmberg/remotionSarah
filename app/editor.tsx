@@ -1,10 +1,10 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (feature 4: adds the "Pop sound" group: a checkbox and the offset slider that write "popSound" into the JSON; features 1 and 2 are unchanged)
+// NOT NEW: existing file, changed (adds the "Chain" group: a checkbox and the chain window slider that write "chain" into the JSON)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {BUBBLE_SCALE, CAPTION_ZOOM, POP_SOUND, validateSpec} from "../src/spec";
+import {BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, POP_SOUND, validateSpec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 
@@ -161,6 +161,16 @@ const Editor = () => {
     save({...obj, popSound: {enabled: popOn, offsetSeconds: popOffset, ...patch}});
   };
 
+  // the chain: checkbox = enabled, slider = windowSeconds (bubbles starting within this time of a group's first bubble stay up together)
+  const chn = obj?.chain;
+  const chainOn = !!chn && chn.enabled !== false; // chain missing = off, present without "enabled" = on
+  const chainWindow = typeof chn?.windowSeconds === "number" && Number.isFinite(chn.windowSeconds) ? chn.windowSeconds : CHAIN.defaultSeconds;
+  const setChain = (patch: {enabled?: boolean; windowSeconds?: number}) => {
+    if (!obj) return;
+    console.log(`[Editor] chain: ${JSON.stringify(patch)}`);
+    save({...obj, chain: {enabled: chainOn, windowSeconds: chainWindow, ...patch}});
+  };
+
   const valid = errors.length === 0;
   console.log(`[Editor] render: json ${valid ? "valid" : "invalid"}, video "${videoName}", picture "${pictureName}"`);
   return (
@@ -227,6 +237,15 @@ const Editor = () => {
                   <span>The sliders need readable JSON above.</span>
                 </div>
               )}
+            </div>
+
+            <div className="group">
+              <span className="gtitle">Chain (saved in the JSON)</span>
+              <label className="row" style={{cursor: obj ? "pointer" : "default", flexWrap: "nowrap"}}>
+                <input type="checkbox" checked={chainOn} disabled={!obj} onChange={(e) => setChain({enabled: e.target.checked})} style={{width: 22, height: 22, flex: "none"}} />
+                <span>Bubbles that start close together stay up together, linked like a chain</span>
+              </label>
+              <Slider label="Chain window" value={chainWindow} min={CHAIN.min} max={CHAIN.max} step={CHAIN.step} show={(v) => `${v.toFixed(1)} s`} onChange={(v) => setChain({windowSeconds: v})} disabled={!obj || !chainOn} />
             </div>
 
             <div className="group">
