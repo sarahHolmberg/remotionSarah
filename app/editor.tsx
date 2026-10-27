@@ -276,6 +276,9 @@ const Editor = () => {
             <span>JSON: {valid ? "valid" : `${errors.length} problem(s)`}</span>
             <span>4. Press Preview (bottom left)</span>
           </div>
+          <div style={{padding: "4px 10px", borderTop: "1px solid var(--line)", textAlign: "center", fontWeight: 700, whiteSpace: "normal"}}>
+            <VersionTag style={{whiteSpace: "normal", fontSize: 12}} />
+          </div>
         </div>
       </div>
 
@@ -290,7 +293,6 @@ const Editor = () => {
           Preview
         </a>
         <span className="taskbtn">Comic editor</span>
-        <VersionTag style={{marginLeft: "auto", alignSelf: "center", paddingRight: 10, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0}} />
       </div>
     </>
   );
