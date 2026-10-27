@@ -12,6 +12,7 @@ export type Timing = {
   endShrinkSeconds: number;
   split: {close: number; travel: number; open: number};
 };
+// cells: where the tail points (one tail per cell); the bubble is placed beside them. tail: still accepted, not used any more.
 export type Caption = {id: number; text: string; from: number; to: number; cells: string[]; mode: "center"; out: "default" | number; tail?: string};
 export type Zoom = {from: number; to: number; percent: number; cells: string[]; hold: true};
 export type BubbleScale = {normal: number; name: number}; // 1 = the size the bubbles always had
@@ -28,6 +29,8 @@ export type Spec = {
     font: {family: string; weight: number; sizeCells: number; capitals: boolean};
     outlineCells: number;
     ballRadiusCells: number;
+    // the tails point at each caption's cells; maxLengthCells = how far the bubble sits from them.
+    // defaultTarget and reach are still accepted so older JSON keeps working, but nothing uses them any more.
     tail: {enabled: boolean; defaultTarget: string; maxLengthCells: number; reach: number};
   };
   timing: Timing;
