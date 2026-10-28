@@ -63,7 +63,7 @@ export const SendToBuffer = () => {
   const box = {background: "#1e1830", padding: 10, borderRadius: 6, width: "min(520px, 92vw)", fontSize: 13, display: "flex", flexDirection: "column" as const, gap: 8};
   return (
     <div style={box}>
-      <b>Send to Buffer</b>
+      <b>Send to Buffer (TikTok and the other networks)</b>
       {channels === null && !msg && <span>Loading your Buffer channels...</span>}
       {channels?.map((c) => (
         <label key={c.id} style={{display: "flex", gap: 8, alignItems: "center"}}>

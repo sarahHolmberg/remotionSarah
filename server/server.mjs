@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import {renderMedia, selectComposition} from "@remotion/renderer"; // installed with @remotion/cli, same version
 import {makeProfileHandler} from "./profiles.mjs";
 import {makeBufferHandler} from "./buffer.mjs";
+import {isInstagramTask, makeInstagramHandler} from "./instagram.mjs";
 
 const ROOT = process.cwd(); // run from the repo root (the Dockerfile does)
 const DIST = path.join(ROOT, "dist"); // the built pages
@@ -27,6 +28,7 @@ const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY || 2); // 2 was the fa
 let busy = false;
 const profiles = makeProfileHandler(ROOT);
 const buffer = makeBufferHandler(OUT);
+const instagram = makeInstagramHandler(OUT);
 
 const log = (m) => console.log(`[Server] ${m}`);
 
@@ -165,7 +167,7 @@ const render = async (req, res) => {
 http
   .createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
-    if (!authorized(req)) {
+    if (!authorized(req) && !isInstagramTask(req, url)) {
       res.writeHead(401, {"WWW-Authenticate": 'Basic realm="Comic editor"'});
       return res.end("Password needed.");
     }
@@ -178,6 +180,7 @@ http
     }
     if (profiles(req, res, url)) return;
     if (buffer(req, res, url)) return;
+    if (instagram(req, res, url)) return;
     if (req.method === "POST" && url.pathname === "/api/upload") return upload(req, res, url);
     if (req.method === "POST" && url.pathname === "/api/render") return void render(req, res);
     if (req.method === "GET" && url.pathname === "/api/download") {

@@ -1,6 +1,7 @@
 // server/buffer.mjs
 // NEW FILE: "Send to Buffer" for the preview tab. Used by server/server.mjs (Cloud Run only).
 //
+// Instagram is left out when the server posts to Instagram directly (IG_ACCESS_TOKEN set, server/instagram.mjs): Buffer is for TikTok and the rest.
 // 1. the exported video (out/comic.mp4) is copied to the Cloud Storage bucket MEDIA_BUCKET, where it has a public link.
 //    Buffer downloads the video when the post goes out (not when it is scheduled), so it has to stay there until then;
 //    the bucket deletes old videos by itself (lifecycle rule).
@@ -11,10 +12,10 @@
 //   POST /api/buffer/send      {text, channelIds: [...], when: "queue" | "now" | "<ISO time>"} -> {video, results: [{channel, ok, message}]}
 
 import fs from "node:fs";
-import crypto from "node:crypto";
+import {BUCKET, publicUrl, putObject, randomName} from "./gcp.mjs";
 
 const KEY = process.env.BUFFER_API_KEY || "";
-const BUCKET = process.env.MEDIA_BUCKET || "";
+const IG_DIRECT = !!process.env.IG_ACCESS_TOKEN; // Instagram goes straight to Meta (server/instagram.mjs): Buffer then only does the other networks
 
 const log = (m) => console.log(`[Buffer] ${m}`);
 
@@ -34,25 +35,13 @@ const channels = async () => {
   const all = [];
   for (const org of account.organizations) {
     const d = await gql("query ($input: ChannelsInput!) { channels(input: $input) { id name displayName service } }", {input: {organizationId: org.id}});
-    d.channels.forEach((c) => all.push({id: c.id, name: c.displayName || c.name, service: c.service}));
+    d.channels.filter((c) => !(IG_DIRECT && c.service === "instagram")).forEach((c) => all.push({id: c.id, name: c.displayName || c.name, service: c.service}));
   }
   return all;
 };
 
-// Cloud Run gives the server a Google token through the metadata server; with it the video goes into the bucket
-const toBucket = async (file) => {
-  const t = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", {headers: {"Metadata-Flavor": "Google"}});
-  if (!t.ok) throw new Error(`no Google token (this only works on Cloud Run): ${t.status}`);
-  const {access_token} = await t.json();
-  const name = `videos/${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}-${crypto.randomBytes(6).toString("hex")}.mp4`; // the random part keeps the link unguessable
-  const r = await fetch(`https://storage.googleapis.com/upload/storage/v1/b/${BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`, {
-    method: "POST",
-    headers: {Authorization: `Bearer ${access_token}`, "Content-Type": "video/mp4"},
-    body: fs.readFileSync(file),
-  });
-  if (!r.ok) throw new Error(`copying the video to the bucket failed: ${r.status} ${await r.text()}`);
-  return `https://storage.googleapis.com/${BUCKET}/${name}`;
-};
+// the bucket gives the video a public link that lasts until the bucket's lifecycle rule deletes it
+const toBucket = async (file) => publicUrl(await putObject(randomName("videos", "mp4"), fs.readFileSync(file), "video/mp4"));
 
 const CREATE = `mutation ($input: CreatePostInput!) {
   createPost(input: $input) {
