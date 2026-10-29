@@ -1,5 +1,5 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (adds the Grid size slider, JSON grid.size)
+// NOT NEW: existing file, changed (the preview is on this page now, next to the editor; JSON edits made under the video come back here)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
@@ -7,6 +7,7 @@ import {createRoot} from "react-dom/client";
 import {applyDefaults, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME_ZOOM, OUTRO, POP_SOUND, PROFILE_KEYS, TAIL, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
+import {Boundary, Preview} from "./previewPanel";
 
 console.log("[Editor] 1. file loaded");
 
@@ -65,6 +66,12 @@ const Editor = () => {
   useEffect(() => {
     console.log(`[Editor] 3. opening channel "${CHANNEL}"`);
     ch.current = new BroadcastChannel(CHANNEL);
+    // the bubble editor under the video changes the JSON too: take its version over
+    ch.current.onmessage = (e) => {
+      if (e.data.type !== "edit") return;
+      console.log("[Editor] JSON edited in the preview");
+      setText(e.data.text);
+    };
     return () => ch.current?.close();
   }, []);
 
@@ -241,7 +248,7 @@ const Editor = () => {
   console.log(`[Editor] render: json ${valid ? "valid" : "invalid"}, video "${videoName}", picture "${pictureName}"`);
   return (
     <>
-      <div className="desk">
+      <div className="desk split">
         <div className="win">
           <div className="title">
             <span className="ticon" aria-hidden="true" />
@@ -355,7 +362,7 @@ const Editor = () => {
                 <Slider label="Grid size" value={obj?.grid?.size ?? 15} min={2} max={26} step={1} show={(v) => `${v}x${v}`} onChange={(v) => obj && save({...obj, grid: {...obj.grid, size: v}})} disabled={!obj} />
                 <span className="hint">The cells in the JSON (and the grid in the preview) go from A1 to {String.fromCharCode(64 + (obj?.grid?.size ?? 15))}{obj?.grid?.size ?? 15}.</span>
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
-                <Slider label="Tail length" value={tailCells} min={TAIL.min} max={TAIL.max} step={TAIL.step} show={(v) => `${v.toFixed(2)} cell${v === 1 ? "" : "s"}`} onChange={setTail} disabled={!obj} />
+                <Slider label="Tail length" value={tailCells} min={TAIL.min} max={TAIL.max} step={TAIL.step} show={(v) => v.toFixed(2)} onChange={setTail} disabled={!obj} />
                 <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
                 <Slider label="Impact burst" value={eff?.impact?.size ?? IMPACT.defaultSize} min={IMPACT.min} max={IMPACT.max} step={IMPACT.step} show={(v) => (v > 0 ? `x${v.toFixed(2)}` : "off")} onChange={setImpact} disabled={!obj} />
                 <span className="hint">
@@ -400,11 +407,18 @@ const Editor = () => {
 
           <div className="sbar">
             <span>JSON: {valid ? "valid" : `${errors.length} problem(s)`}</span>
-            <span>4. Press Preview (bottom left)</span>
+            <span>4. Watch and edit the bubbles in the preview</span>
           </div>
           <div style={{padding: "4px 10px", borderTop: "1px solid var(--line)", textAlign: "center", fontWeight: 700, whiteSpace: "normal"}}>
             <VersionTag style={{whiteSpace: "normal", fontSize: 12}} />
           </div>
+        </div>
+
+        {/* the preview, right next to the editor (one under the other on a narrow screen) */}
+        <div className="pv">
+          <Boundary>
+            <Preview embedded />
+          </Boundary>
         </div>
       </div>
 
@@ -416,7 +430,7 @@ const Editor = () => {
             <i />
             <i />
           </span>
-          Preview
+          Preview tab
         </a>
         <span className="taskbtn">Comic editor</span>
       </div>
