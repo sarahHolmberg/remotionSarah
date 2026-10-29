@@ -4,7 +4,7 @@
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {applyDefaults, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME_ZOOM, OUTRO, POP_SOUND, PROFILE_KEYS, validateSpec, type Spec} from "../src/spec";
+import {applyDefaults, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME_ZOOM, OUTRO, POP_SOUND, PROFILE_KEYS, TAIL, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 
@@ -176,6 +176,9 @@ const Editor = () => {
   const setNameZoom = (percent: number) => obj && eff && save({...obj, nameZoom: {...eff.nameZoom!, percent}});
   const setOutro = (secondsBeforeEnd: number) => obj && eff && save({...obj, outro: {...eff.outro!, secondsBeforeEnd}});
   const setImpact = (size: number) => obj && eff && save({...obj, impact: {...eff.impact!, size}});
+  // tail length = style.tail.maxLengthCells: how close a bubble sits to the cell its tail points at
+  const tailCells: number = obj?.style?.tail?.maxLengthCells ?? TAIL.defaultCells;
+  const setTail = (v: number) => obj?.style?.tail && save({...obj, style: {...obj.style, tail: {...obj.style.tail, maxLengthCells: v}}});
 
   // profiles: every slider setting under a name, kept on the server (GitHub when it has a token, see server/profiles.mjs)
   const [profiles, setProfiles] = useState<string[]>([]);
@@ -204,6 +207,7 @@ const Editor = () => {
       const next = {...obj};
       // a profile setting replaces the JSON's, but keeps what belongs to this video (impact.at / impact.captions)
       PROFILE_KEYS.forEach((k) => (d[k] === undefined ? delete next[k] : (next[k] = k === "impact" ? {...obj.impact, ...d[k]} : d[k])));
+      if (typeof d.tailLength === "number" && next.style?.tail) next.style = {...next.style, tail: {...next.style.tail, maxLengthCells: d.tailLength}}; // lives inside "style"
       save(next);
       console.log(`[Editor] loaded profile ${picked}`);
       setProfileMsg(`Loaded "${picked}".`);
@@ -214,8 +218,9 @@ const Editor = () => {
   const saveProfile = async () => {
     const name = newName.trim().replace(/\s+/g, "-");
     if (!eff || !name) return;
-    const data = Object.fromEntries(PROFILE_KEYS.filter((k) => eff[k] !== undefined).map((k) => [k, eff[k]]));
+    const data: Record<string, unknown> = Object.fromEntries(PROFILE_KEYS.filter((k) => eff[k] !== undefined).map((k) => [k, eff[k]]));
     data.impact = {size: eff.impact?.size ?? IMPACT.defaultSize}; // the size only: where the bursts go belongs to each video
+    data.tailLength = tailCells;
     try {
       setProfileMsg(`Saving "${name}"...`);
       const r = await fetch(`/api/profiles/${encodeURIComponent(name)}`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
@@ -350,6 +355,7 @@ const Editor = () => {
                 <Slider label="Grid size" value={obj?.grid?.size ?? 15} min={2} max={26} step={1} show={(v) => `${v}x${v}`} onChange={(v) => obj && save({...obj, grid: {...obj.grid, size: v}})} disabled={!obj} />
                 <span className="hint">The cells in the JSON (and the grid in the preview) go from A1 to {String.fromCharCode(64 + (obj?.grid?.size ?? 15))}{obj?.grid?.size ?? 15}.</span>
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
+                <Slider label="Tail length" value={tailCells} min={TAIL.min} max={TAIL.max} step={TAIL.step} show={(v) => `${v.toFixed(2)} cell${v === 1 ? "" : "s"}`} onChange={setTail} disabled={!obj} />
                 <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
                 <Slider label="Impact burst" value={eff?.impact?.size ?? IMPACT.defaultSize} min={IMPACT.min} max={IMPACT.max} step={IMPACT.step} show={(v) => (v > 0 ? `x${v.toFixed(2)}` : "off")} onChange={setImpact} disabled={!obj} />
                 <span className="hint">

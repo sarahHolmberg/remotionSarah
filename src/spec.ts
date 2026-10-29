@@ -30,7 +30,7 @@ export type Spec = {
     font: {family: string; weight: number; sizeCells: number; capitals: boolean};
     outlineCells: number;
     ballRadiusCells: number;
-    // the tails point at each caption's cells; maxLengthCells = how far the bubble sits from them.
+    // the tails point at each caption's cells; maxLengthCells = the gap between the bubble and its cell, in grid cells (the "Tail length" slider).
     // defaultTarget and reach are still accepted so older JSON keeps working, but nothing uses them any more.
     tail: {enabled: boolean; defaultTarget: string; maxLengthCells: number; reach: number};
   };
@@ -61,6 +61,9 @@ export const NAME_ZOOM = {min: 0, max: 15, step: 0.5, defaultPercent: 4, default
 
 // Limits and start value of the chain window slider (the editor tab uses the same numbers)
 export const CHAIN = {min: 0.5, max: 4, step: 0.1, defaultSeconds: 1.5};
+
+// Limits and start value of the tail length slider (the gap between a bubble and the cell it points at, in grid cells)
+export const TAIL = {min: 0.1, max: 4, step: 0.05, defaultCells: 0.5};
 
 // Limits and start value of the impact size slider (the editor tab uses the same numbers); 0 = no impact burst
 export const IMPACT = {min: 0, max: 4, step: 0.05, defaultSize: 1.5, holdSeconds: 0.6, bubbleCells: 3}; // bubbleCells: the width a burst "at" a cell counts as one bubble width

@@ -1,5 +1,5 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (the impact burst behind chosen bubbles, JSON "impact"; the outro and name zoom sliders moved to the editor tab)
+// NOT NEW: existing file, changed (bubbles sit close to their cells: the Tail length slider sets the gap, only a little randomness on top)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, random, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
@@ -68,9 +68,10 @@ const CHAIN_GAP_CELLS = 0.25; // bubbles of one chain keep at least this much ro
 
 // ---- BUBBLE PLACEMENT (change here) ----
 // The caption's cells are where the TAIL points. The bubble sits in a random direction from them, at a random distance:
-// the tail is at least style.tail.maxLengthCells long, and up to (1 + PLACE_FAR) times that.
+// the gap between the bubble's edge and its cell is style.tail.maxLengthCells (the "Tail length" slider in the editor tab),
+// plus up to PLACE_FAR of that at random so the bubbles don't all sit the same.
 // "Random" is fixed per caption id (Remotion's random(seed)), so the preview and every render frame agree.
-const PLACE_FAR = 2; // 0 = always the shortest tail, 2 = up to 3x as long
+const PLACE_FAR = 0.25; // 0 = always exactly the slider's length, 0.25 = up to 25% longer
 const PLACE_TRIES = 16; // directions tried until the bubble fits in the frame without being pushed back in
 
 // Distance from the center of an ellipse to its edge, in direction (ux, uy) (a unit vector)

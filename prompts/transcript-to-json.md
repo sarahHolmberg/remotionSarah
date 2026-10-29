@@ -61,7 +61,7 @@ Output exactly this, with the captions and impacts filled in, in one ```json cod
     "font": {"family": "Comic Neue", "weight": 700, "sizeCells": 0.4, "capitals": true},
     "outlineCells": 0.05,
     "ballRadiusCells": 0.25,
-    "tail": {"enabled": true, "defaultTarget": "J10", "maxLengthCells": 1.8, "reach": 0.6}
+    "tail": {"enabled": true, "defaultTarget": "J10", "maxLengthCells": 0.5, "reach": 0.6}
   },
   "timing": {
     "exitFadeSeconds": 0.05, "gapBeforeNextSeconds": 0.5, "lastHoldSeconds": 0.6,
