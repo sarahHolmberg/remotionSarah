@@ -17,7 +17,7 @@ The transcript is a list of spoken markers, in order:
 
 - `Target cell <CELL>, time <TIME>.` starts a new bubble whose tail points at CELL and whose words appear at TIME.
 - `Action, <words>.` gives the words for the most recent target. If several actions follow one target, join them into one text with ", " (example: "bend head down, hand to chest").
-- `Name bubble.` means the NEXT target is the name bubble. Its words are the DANCER NAME, not an action.
+- `Name bubble.` means the NEXT target is the name bubble. Its words are the DANCER NAME, not an action. An `Action` said right after the name bubble's target does NOT make a second bubble (two bubbles can never start at the same time): leave it out and list it under Notes.
 - `And.` between two targets means both are the same bubble with two tails: one bubble, both cells, at the first target's time. The action after the second target gives the words.
 - `Impact, cell <CELL>, time <TIME>.` (optionally followed by `until <TIME>`) puts an impact burst at CELL at TIME. It is not a bubble.
 - Ignore everything else: player text like "Play", "Mute", "Settings", "00:00", the recording's file name, filler words.
@@ -38,6 +38,8 @@ The transcript is a list of spoken markers, in order:
 - A target that never gets an action (and is not the name bubble) has no words: leave it out and list it under Notes.
 - Two targets with the same cell and the same time are one bubble: join their actions with ", ".
 - Two bubbles at the same time on different cells without `And.`: make them one bubble with both cells, and list it under Notes.
+- No two captions may have the same `from`: each caption's `from` must be later than the previous caption's `to`.
+- DANCER NAME is used exactly as written above (if it was spelled out letter by letter with dashes, write it as one word, e.g. "S-A-B-Y-0-7-3" → "saby073").
 
 ## Impacts
 
