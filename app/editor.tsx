@@ -1,5 +1,5 @@
 // app/editor.tsx
-// NOT NEW: existing file, changed (two columns: files + foldable JSON left, settings right; adds profiles, the impact, name zoom and outro sliders)
+// NOT NEW: existing file, changed (adds the Grid size slider, JSON grid.size)
 
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
@@ -347,6 +347,8 @@ const Editor = () => {
 
               <div className="group">
                 <span className="gtitle">Bubbles</span>
+                <Slider label="Grid size" value={obj?.grid?.size ?? 15} min={2} max={26} step={1} show={(v) => `${v}x${v}`} onChange={(v) => obj && save({...obj, grid: {...obj.grid, size: v}})} disabled={!obj} />
+                <span className="hint">The cells in the JSON (and the grid in the preview) go from A1 to {String.fromCharCode(64 + (obj?.grid?.size ?? 15))}{obj?.grid?.size ?? 15}.</span>
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
                 <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
                 <Slider label="Impact burst" value={eff?.impact?.size ?? IMPACT.defaultSize} min={IMPACT.min} max={IMPACT.max} step={IMPACT.step} show={(v) => (v > 0 ? `x${v.toFixed(2)}` : "off")} onChange={setImpact} disabled={!obj} />

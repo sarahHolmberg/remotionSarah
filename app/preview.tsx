@@ -1,5 +1,5 @@
 // app/preview.tsx
-// NOT NEW: existing file, changed (the "Post to Instagram" panel with its queue, app/instagram.tsx; Buffer stays for the other networks)
+// NOT NEW: existing file, changed (a grid over the video with the cell names, app/grid.tsx; on/off checkbox next to Export)
 
 // Tab 2: plays the video with the captions on top (the same ComicEdit that Remotion renders), updates live when the editor tab sends new JSON, a new video or a new picture.
 import {Component, useEffect, useMemo, useState, type ReactNode} from "react";
@@ -13,6 +13,9 @@ import {CHANNEL, DEFAULT_TEXT, loadPicture, loadVideo, STORE_KEY} from "./shared
 import {VersionTag} from "./version";
 import {SendToBuffer} from "./buffer";
 import {PostToInstagram} from "./instagram";
+import {GridOverlay} from "./grid";
+
+const GRID_KEY = "comic-show-grid"; // the grid checkbox is remembered in the browser
 
 console.log("[Preview] 1. file loaded, all imports resolved");
 
@@ -92,6 +95,21 @@ const Preview = () => {
   const [shown, setShown] = useState<{spec: Spec; meta: Meta; src: string} | null>(null); // last good version stays on screen
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
+  const [showGrid, setShowGrid] = useState(() => {
+    try {
+      return localStorage.getItem(GRID_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const toggleGrid = (on: boolean) => {
+    setShowGrid(on);
+    try {
+      localStorage.setItem(GRID_KEY, on ? "on" : "off");
+    } catch (e) {
+      console.error("[Preview] cannot save the grid setting", e);
+    }
+  };
   const [exported, setExported] = useState(false); // a finished video is on the server: the Buffer panel shows
   const [renderLog, setRenderLog] = useState<string[]>([]);
 
@@ -274,13 +292,18 @@ const Preview = () => {
           {exporting ? "Exporting..." : "Export video"}
         </button>
         {exportMsg && <span style={{fontSize: 13}}>{exportMsg}</span>}
+        <label style={{display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer"}}>
+          <input type="checkbox" checked={showGrid} onChange={(e) => toggleGrid(e.target.checked)} />
+          Grid {spec.grid.size}x{spec.grid.size} (A1 to {String.fromCharCode(64 + spec.grid.size)}
+          {spec.grid.size}, not in the export)
+        </label>
       </div>
       <PostToInstagram exported={exported} seconds={m.seconds} />
       {exported && <SendToBuffer />}
       {renderLog.length > 0 && (
         <pre style={{margin: 0, maxWidth: "90vw", maxHeight: 160, overflow: "auto", fontSize: 11, background: "#1e1830", padding: 8}}>{renderLog.join("\n")}</pre>
       )}
-      <div style={{height: "92vh", aspectRatio: `${m.w} / ${m.h}`}}>
+      <div style={{position: "relative", height: "92vh", aspectRatio: `${m.w} / ${m.h}`}}>
         <Player
           key={`${shown.src}-${m.w}x${m.h}-${spec.fps}`}
           component={ComicEdit}
@@ -296,6 +319,7 @@ const Preview = () => {
             return <span style={{color: "#ff7a7a"}}>Player error: {error.message}</span>;
           }}
         />
+        {showGrid && <GridOverlay n={spec.grid.size} w={m.w} h={m.h} />}
       </div>
       <VersionTag style={{opacity: 0.6}} />
     </div>
