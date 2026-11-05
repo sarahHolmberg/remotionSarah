@@ -25,6 +25,8 @@ const OUT = path.join(ROOT, "out", "comic.mp4");
 const PORT = Number(process.env.PORT || 8080); // Cloud Run sets PORT
 const PASSWORD = process.env.APP_PASSWORD || "";
 const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY || 2); // 2 was the fastest on 2 CPUs in the Codespace test
+// Cloud Run has no graphics card: the "Real 3D" bubbles (WebGL) are drawn in software by Chrome's SwiftShader
+const CHROMIUM = {gl: process.env.RENDER_GL || "swangle"};
 let busy = false;
 const profiles = makeProfileHandler(ROOT);
 const buffer = makeBufferHandler(OUT);
@@ -135,7 +137,7 @@ const render = async (req, res) => {
   const started = Date.now();
   try {
     say(`Starting: ComicEdit, concurrency ${CONCURRENCY}`);
-    const composition = await selectComposition({serveUrl: BUNDLE, id: "ComicEdit", inputProps: spec});
+    const composition = await selectComposition({serveUrl: BUNDLE, id: "ComicEdit", inputProps: spec, chromiumOptions: CHROMIUM});
     say(`Video: ${composition.width}x${composition.height}, ${composition.durationInFrames} frames at ${composition.fps} fps`);
     let lastPct = -1;
     await renderMedia({
@@ -146,6 +148,7 @@ const render = async (req, res) => {
       outputLocation: OUT,
       inputProps: spec,
       concurrency: CONCURRENCY,
+      chromiumOptions: CHROMIUM,
       overwrite: true,
       onProgress: ({progress, renderedFrames, encodedFrames}) => {
         const pct = Math.floor(progress * 100);

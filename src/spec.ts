@@ -45,7 +45,7 @@ export type Spec = {
   // captions: behind these captions' bubbles. at: on its own at a grid cell, from "from" to "to" seconds (to missing = from + 0.6).
   // With neither captions nor at, it sits behind the first normal caption.
   impact?: {size: number; captions?: number[]; at?: ImpactAt[]};
-  bubble3d?: {slant: number; depth: number}; // optional: the bubbles are thick discs turned around their vertical axis (left side forward); slant = most degrees (each bubble gets a random share), depth = thickness in grid cells; slant 0 = flat
+  bubble3d?: {slant: number; depth: number; engine?: "svg" | "three"; seeThrough?: number}; // engine: "svg" = classic, "three" = Real 3D (Three.js); seeThrough: 0 = solid, 0.5 = half see-through (the words stay solid) // optional: the bubbles are thick discs turned around their vertical axis (left side forward); slant = most degrees (each bubble gets a random share), depth = thickness in grid cells; slant 0 = flat
   outro?: {secondsBeforeEnd: number; text?: string}; // optional: the end bubble (center, fills the screen, three dots turn into the text, pop sound); secondsBeforeEnd 0 = off
   chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
@@ -67,7 +67,7 @@ export const CHAIN = {min: 0.5, max: 4, step: 0.1, defaultSeconds: 1.5};
 export const TAIL = {min: 0.1, max: 4, step: 0.05, defaultCells: 0.5};
 
 // Limits and start values of the 3D sliders (the editor tab uses the same numbers)
-export const BUBBLE3D = {slantMin: 0, slantMax: 45, slantStep: 0.5, defaultSlant: 20, depthMin: 0, depthMax: 1.5, depthStep: 0.05, defaultDepth: 0.5};
+export const BUBBLE3D = {slantMin: 0, slantMax: 45, slantStep: 0.5, defaultSlant: 20, depthMin: 0, depthMax: 1.5, depthStep: 0.05, defaultDepth: 0.5, seeThroughMax: 0.5, defaultSeeThrough: 0.1};
 
 // Limits and start value of the impact size slider (the editor tab uses the same numbers); 0 = no impact burst
 export const IMPACT = {min: 0, max: 4, step: 0.05, defaultSize: 1.5, holdSeconds: 0.6, bubbleCells: 3}; // bubbleCells: the width a burst "at" a cell counts as one bubble width
@@ -248,7 +248,9 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
   if (s.bubble3d !== undefined) {
     if (!isObj(s.bubble3d)) errors.push('bubble3d: must be an object like {"slant": 20, "depth": 0.5}');
     else {
-      keys(s.bubble3d, ["slant", "depth"], "bubble3d");
+      keys(s.bubble3d, ["slant", "depth", "engine", "seeThrough"], "bubble3d");
+      if (s.bubble3d.engine !== undefined && s.bubble3d.engine !== "svg" && s.bubble3d.engine !== "three") errors.push('bubble3d.engine: must be "svg" (classic) or "three" (Real 3D)');
+      if (s.bubble3d.seeThrough !== undefined) num(s.bubble3d.seeThrough, "bubble3d.seeThrough", 0, BUBBLE3D.seeThroughMax);
       num(s.bubble3d.slant, "bubble3d.slant", BUBBLE3D.slantMin, BUBBLE3D.slantMax);
       num(s.bubble3d.depth, "bubble3d.depth", BUBBLE3D.depthMin, BUBBLE3D.depthMax);
     }
@@ -324,5 +326,5 @@ export const applyDefaults = (spec: Spec): Spec => ({
   nameZoom: {percent: spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: spec.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
   outro: {secondsBeforeEnd: spec.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds, text: spec.outro?.text ?? OUTRO.defaultText},
   impact: {...spec.impact, size: spec.impact?.size ?? IMPACT.defaultSize},
-  bubble3d: {slant: spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant, depth: spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth},
+  bubble3d: {...spec.bubble3d, slant: spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant, depth: spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth},
 });

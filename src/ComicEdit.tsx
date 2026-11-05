@@ -1,5 +1,5 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (3D bubbles: thick discs turned around their vertical axis, left side forward; JSON "bubble3d")
+// NOT NEW: existing file, changed (the "Real 3D" bubble style through Three.js, src/Bubbles3D.tsx; see-through bubbles; JSON bubble3d.engine / seeThrough)
 
 import {useMemo} from "react";
 import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, random, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
@@ -7,6 +7,7 @@ import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the 
 import {cellRect} from "./gridCell";
 import {blobsAt, chainGroups, chainSchedule, type ChainBlob} from "./bubbleTimeline";
 import {BUBBLE3D, IMPACT, type Caption, type Spec} from "./spec";
+import {Bubbles3DLayer, type Bubble3D, type Tail3D} from "./Bubbles3D";
 
 const {fontFamily} = loadFont("normal", {weights: ["700"]});
 const ADV = 0.66; // average capital-letter width as a fraction of font size (only sizes the bubble)
@@ -118,6 +119,8 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const slantMax = ((spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant) * Math.PI) / 180;
   const depthCells = spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth;
   const eye = width * PERSPECTIVE;
+  const real3d = spec.bubble3d?.engine === "three"; // "Real 3D" style (src/Bubbles3D.tsx); otherwise the classic SVG bubbles
+  const seeThrough = spec.bubble3d?.seeThrough ?? BUBBLE3D.defaultSeeThrough; // the bubbles, not their words
   if (frame === 0) console.log(`[Comic] chain: ${chainWindow ? `window ${chainWindow}s, groups ${groups.map((g) => g.map((k) => captions[k].id).join("+")).join(" | ")}` : "off"}`);
   const pictureUrl = spec.pictureSrc ?? (spec.picture ? staticFile(spec.picture.file) : undefined);
   if (frame === 0) console.log(`[Comic] bubble size: normal x${normalScale}, name x${nameScale}`);
@@ -412,6 +415,48 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     );
   };
 
+  // Real 3D: every open bubble of this frame, measured in its own (unturned) plane. The camera has no perspective, so a point
+  // (dx, dy) of the front face shows at (cx + dx * cos(turn), cy + dy): a tail tip at dx = (cell - cx) / cos(turn) lands on the cell.
+  const bubbles3d: Bubble3D[] = !real3d
+    ? []
+    : blobs.flatMap((b) => {
+        if (b.kind !== "cell") return [];
+        const g = geo.items[b.k];
+        const ca = Math.cos(g.slant);
+        const onE = (a: number, k: number): P => ({x: k * g.rx * Math.cos(a), y: k * g.ry * Math.sin(a)});
+        const tails: Tail3D[] =
+          !style.tail.enabled || b.o <= 0.02
+            ? []
+            : g.tips.flatMap((tip0) => {
+                const dx = (tip0.x - g.c.x) / ca;
+                const dy = tip0.y - g.c.y;
+                const phi = Math.atan2(g.rx * dy, g.ry * dx);
+                const base = onE(phi, 1);
+                const gap = Math.hypot(dx - base.x, dy - base.y) || 1;
+                const L = Math.hypot(dx, dy) > Math.hypot(base.x, base.y) ? gap * b.o * b.sc : 0; // no tail when the bubble covers the cell
+                if (L <= 0.5) return [];
+                const d = {x: (dx - base.x) / gap, y: (dy - base.y) / gap};
+                const b1 = onE(phi - 0.35, 1);
+                const b2 = onE(phi + 0.35, 1);
+                const tip = {x: base.x + d.x * L, y: base.y + d.y * L};
+                const n = {x: -d.y, y: d.x};
+                return [{phi, tip, c1: {x: (b1.x + tip.x) / 2 + n.x * L * 0.18, y: (b1.y + tip.y) / 2 + n.y * L * 0.18}, c2: {x: (b2.x + tip.x) / 2 + n.x * L * 0.18, y: (b2.y + tip.y) / 2 + n.y * L * 0.18}}];
+              });
+        return [
+          {
+            key: `b${b.k}`,
+            cx: g.c.x,
+            cy: g.c.y,
+            rx: (R + (g.rx - R) * b.o) * b.sc,
+            ry: (R + (g.ry - R) * b.o) * b.sc,
+            pic: g.pic ? {x: (g.pic.x - g.c.x) * b.o, y: (g.pic.y - g.c.y) * b.o, r: (R + (g.pic.rp - R) * b.o) * b.sc} : null,
+            tails,
+            slant: g.slant,
+            depth: depthCells * geo.cw * b.sc,
+          },
+        ];
+      });
+
   // the outro bubble: one ellipse in the middle (outline + fill), the bouncing dots, then the text
   const outroLayer = () => {
     if (outroU === null) return null;
@@ -499,9 +544,9 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     const r = (R + (g.pic.rp - R) * blob.o) * blob.sc * NAME_PIC_INSET;
     const a = Math.max(0, Math.min(1, (blob.o - 0.7) / 0.3)); // the photo fades in when the bubble is nearly open
     if (a <= 0 || r < 2) return null;
-    // on the turned disc: moved and squashed like the picture circle around it
-    const q = projector(g.c.x, g.c.y, g.slant, eye)(px - g.c.x, py - g.c.y);
-    const s = eye / (eye + (px - g.c.x) * Math.sin(g.slant));
+    // on the turned disc: moved and squashed like the picture circle around it (Real 3D has no perspective)
+    const q = real3d ? {x: g.c.x + (px - g.c.x) * Math.cos(g.slant), y: py} : projector(g.c.x, g.c.y, g.slant, eye)(px - g.c.x, py - g.c.y);
+    const s = real3d ? 1 : eye / (eye + (px - g.c.x) * Math.sin(g.slant));
     return (
       <foreignObject x={px - r} y={py - r} width={2 * r} height={2 * r} style={{opacity: a}} transform={`translate(${q.x} ${q.y}) scale(${Math.cos(g.slant) * s} ${s}) translate(${-px} ${-py})`}>
         <div style={{width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden"}}>
@@ -535,16 +580,17 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
         {impactLayer()}
         {impactAtLayer()}
         {blobs.length > 0 && (
-          <g>
-            {/* links first, so the bubbles sit on top of them; the ink pass first, so the fill pass hides the outline where a link enters a bubble */}
-            {layered.map((b, i) => (
-              <g key={`ink${i}`}>{draw(b, style.ink, lw)}</g>
-            ))}
-            {layered.map((b, i) => (
-              <g key={`fill${i}`}>{draw(b, style.fill, 0)}</g>
-            ))}
+          <g opacity={1 - seeThrough}>
+            {/* links first, so the bubbles sit on top of them; the ink pass first, so the fill pass hides the outline where a link enters a bubble.
+                Real 3D: only the links and the travelling ball are drawn here, the bubbles are in the 3D layer below */}
+            {layered.map((b, i) => (real3d && b.kind === "cell" ? null : <g key={`ink${i}`}>{draw(b, style.ink, lw)}</g>))}
+            {layered.map((b, i) => (real3d && b.kind === "cell" ? null : <g key={`fill${i}`}>{draw(b, style.fill, 0)}</g>))}
           </g>
         )}
+      </svg>
+      {real3d && bubbles3d.length > 0 && <Bubbles3DLayer bubbles={bubbles3d} width={width} height={height} fill={style.fill} ink={style.ink} outline={lw} opacity={1 - seeThrough} />}
+
+      <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
         {pictureLayer()}
 
         {captions.map((cap, k) => {
@@ -556,7 +602,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           const isName = !!pic;
           // a line of words on the turned disc: squashed sideways, and sloping like the disc's own lines do in perspective
           const onDisc = (y: number) => {
-            const m = (-(y - c.y) * Math.sin(slant)) / eye;
+            const m = real3d ? 0 : (-(y - c.y) * Math.sin(slant)) / eye; // Real 3D: no perspective, only squashed
             return `matrix(${Math.cos(slant)} ${m} 0 1 ${c.x * (1 - Math.cos(slant))} ${-m * c.x})`;
           };
           const rows = lines.map((line, li) => {

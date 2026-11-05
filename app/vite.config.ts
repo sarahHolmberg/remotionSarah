@@ -70,7 +70,7 @@ const renderApi = (): Plugin => ({
 
           busy = true;
           res.writeHead(200, {"Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache", "X-Accel-Buffering": "no"});
-          const args = ["remotion", "render", "ComicEdit", OUT, `--props=${PROPS}`, "--concurrency=2"];
+          const args = ["remotion", "render", "ComicEdit", OUT, `--props=${PROPS}`, "--concurrency=2", "--gl=swangle"]; // swangle: the Real 3D bubbles need WebGL, drawn in software
           log(`running: npx ${args.join(" ")}`);
           res.write(`Starting: npx ${args.join(" ")}\n`);
           const child = spawn(process.platform === "win32" ? "npx.cmd" : "npx", args, {cwd: ROOT});

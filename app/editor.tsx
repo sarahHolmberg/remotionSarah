@@ -183,7 +183,7 @@ const Editor = () => {
   const setNameZoom = (percent: number) => obj && eff && save({...obj, nameZoom: {...eff.nameZoom!, percent}});
   const setOutro = (secondsBeforeEnd: number) => obj && eff && save({...obj, outro: {...eff.outro!, secondsBeforeEnd}});
   const setImpact = (size: number) => obj && eff && save({...obj, impact: {...eff.impact!, size}});
-  const set3d = (patch: {slant?: number; depth?: number}) => obj && eff && save({...obj, bubble3d: {...eff.bubble3d!, ...patch}});
+  const set3d = (patch: {slant?: number; depth?: number; engine?: "svg" | "three"; seeThrough?: number}) => obj && eff && save({...obj, bubble3d: {...eff.bubble3d!, ...patch}});
   // tail length = style.tail.maxLengthCells: how close a bubble sits to the cell its tail points at
   const tailCells: number = obj?.style?.tail?.maxLengthCells ?? TAIL.defaultCells;
   const setTail = (v: number) => obj?.style?.tail && save({...obj, style: {...obj.style, tail: {...obj.style.tail, maxLengthCells: v}}});
@@ -363,6 +363,14 @@ const Editor = () => {
                 <Slider label="Grid size" value={obj?.grid?.size ?? 15} min={2} max={26} step={1} show={(v) => `${v}x${v}`} onChange={(v) => obj && save({...obj, grid: {...obj.grid, size: v}})} disabled={!obj} />
                 <span className="hint">The cells in the JSON (and the grid in the preview) go from A1 to {String.fromCharCode(64 + (obj?.grid?.size ?? 15))}{obj?.grid?.size ?? 15}.</span>
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
+                <div className="row" style={{flexWrap: "nowrap"}}>
+                  <span style={{width: 104, flex: "none"}}>Bubble style</span>
+                  <select className="file" value={eff?.bubble3d?.engine ?? "svg"} disabled={!obj} onChange={(e) => set3d({engine: e.target.value as "svg" | "three"})}>
+                    <option value="svg">Classic</option>
+                    <option value="three">Real 3D (rounded, lit)</option>
+                  </select>
+                </div>
+                <Slider label="See-through" value={eff?.bubble3d?.seeThrough ?? BUBBLE3D.defaultSeeThrough} min={0} max={BUBBLE3D.seeThroughMax} step={0.01} show={(v) => `${Math.round(v * 100)}%`} onChange={(v) => set3d({seeThrough: v})} disabled={!obj} />
                 <Slider label="3D turn" value={eff?.bubble3d?.slant ?? BUBBLE3D.defaultSlant} min={BUBBLE3D.slantMin} max={BUBBLE3D.slantMax} step={BUBBLE3D.slantStep} show={(v) => (v > 0 ? `${v.toFixed(1)}°` : "flat")} onChange={(v) => set3d({slant: v})} disabled={!obj} />
                 <Slider label="3D depth" value={eff?.bubble3d?.depth ?? BUBBLE3D.defaultDepth} min={BUBBLE3D.depthMin} max={BUBBLE3D.depthMax} step={BUBBLE3D.depthStep} show={(v) => v.toFixed(2)} onChange={(v) => set3d({depth: v})} disabled={!obj} />
                 <span className="hint">3D: every bubble turns a random amount up to this (left side toward you, right side away); depth is its thickness in grid cells.</span>
