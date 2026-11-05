@@ -45,6 +45,7 @@ export type Spec = {
   // captions: behind these captions' bubbles. at: on its own at a grid cell, from "from" to "to" seconds (to missing = from + 0.6).
   // With neither captions nor at, it sits behind the first normal caption.
   impact?: {size: number; captions?: number[]; at?: ImpactAt[]};
+  bubble3d?: {slant: number; depth: number}; // optional: the bubbles are thick discs turned around their vertical axis (left side forward); slant = most degrees (each bubble gets a random share), depth = thickness in grid cells; slant 0 = flat
   outro?: {secondsBeforeEnd: number; text?: string}; // optional: the end bubble (center, fills the screen, three dots turn into the text, pop sound); secondsBeforeEnd 0 = off
   chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
@@ -65,11 +66,14 @@ export const CHAIN = {min: 0.5, max: 4, step: 0.1, defaultSeconds: 1.5};
 // Limits and start value of the tail length slider (the gap between a bubble and the cell it points at, in grid cells)
 export const TAIL = {min: 0.1, max: 4, step: 0.05, defaultCells: 0.5};
 
+// Limits and start values of the 3D sliders (the editor tab uses the same numbers)
+export const BUBBLE3D = {slantMin: 0, slantMax: 45, slantStep: 0.5, defaultSlant: 20, depthMin: 0, depthMax: 1.5, depthStep: 0.05, defaultDepth: 0.5};
+
 // Limits and start value of the impact size slider (the editor tab uses the same numbers); 0 = no impact burst
 export const IMPACT = {min: 0, max: 4, step: 0.05, defaultSize: 1.5, holdSeconds: 0.6, bubbleCells: 3}; // bubbleCells: the width a burst "at" a cell counts as one bubble width
 
 // The settings a profile saves and loads (everything the sliders in the editor tab change)
-export const PROFILE_KEYS = ["bubbleScale", "captionZoom", "popSound", "chain", "nameZoom", "outro", "impact"] as const;
+export const PROFILE_KEYS = ["bubbleScale", "captionZoom", "popSound", "chain", "nameZoom", "outro", "impact", "bubble3d"] as const;
 
 // Limits and start values of the outro slider (the editor tab uses the same numbers); 0 = no outro
 export const OUTRO = {min: 0, max: 5, step: 0.1, defaultSeconds: 1, defaultText: "MIRRORS"};
@@ -100,7 +104,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubble3d", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -240,6 +244,16 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
     }
   }
 
+  // bubble3d (optional)
+  if (s.bubble3d !== undefined) {
+    if (!isObj(s.bubble3d)) errors.push('bubble3d: must be an object like {"slant": 20, "depth": 0.5}');
+    else {
+      keys(s.bubble3d, ["slant", "depth"], "bubble3d");
+      num(s.bubble3d.slant, "bubble3d.slant", BUBBLE3D.slantMin, BUBBLE3D.slantMax);
+      num(s.bubble3d.depth, "bubble3d.depth", BUBBLE3D.depthMin, BUBBLE3D.depthMax);
+    }
+  }
+
   // impact (optional)
   if (s.impact !== undefined) {
     if (!isObj(s.impact)) errors.push('impact: must be an object like {"size": 1.5}');
@@ -304,10 +318,11 @@ export const validateAgainstVideo = (spec: Spec, seconds: number): string[] => {
   return errors;
 };
 // The settings the editor sliders show when the JSON does not have them yet; the preview and the export use the same values.
-// (bubbleScale, captionZoom, popSound and chain stay off when missing; these three are on by default.)
+// (bubbleScale, captionZoom, popSound and chain stay off when missing; these are on by default.)
 export const applyDefaults = (spec: Spec): Spec => ({
   ...spec,
   nameZoom: {percent: spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: spec.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
   outro: {secondsBeforeEnd: spec.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds, text: spec.outro?.text ?? OUTRO.defaultText},
   impact: {...spec.impact, size: spec.impact?.size ?? IMPACT.defaultSize},
+  bubble3d: {slant: spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant, depth: spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth},
 });

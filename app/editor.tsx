@@ -4,7 +4,7 @@
 // Tab 1: pick the video and the picture, paste the JSON. Valid JSON is saved and sent to tab 2.
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
-import {applyDefaults, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME_ZOOM, OUTRO, POP_SOUND, PROFILE_KEYS, TAIL, validateSpec, type Spec} from "../src/spec";
+import {applyDefaults, BUBBLE3D, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME_ZOOM, OUTRO, POP_SOUND, PROFILE_KEYS, TAIL, validateSpec, type Spec} from "../src/spec";
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 import {Boundary, Preview} from "./previewPanel";
@@ -183,6 +183,7 @@ const Editor = () => {
   const setNameZoom = (percent: number) => obj && eff && save({...obj, nameZoom: {...eff.nameZoom!, percent}});
   const setOutro = (secondsBeforeEnd: number) => obj && eff && save({...obj, outro: {...eff.outro!, secondsBeforeEnd}});
   const setImpact = (size: number) => obj && eff && save({...obj, impact: {...eff.impact!, size}});
+  const set3d = (patch: {slant?: number; depth?: number}) => obj && eff && save({...obj, bubble3d: {...eff.bubble3d!, ...patch}});
   // tail length = style.tail.maxLengthCells: how close a bubble sits to the cell its tail points at
   const tailCells: number = obj?.style?.tail?.maxLengthCells ?? TAIL.defaultCells;
   const setTail = (v: number) => obj?.style?.tail && save({...obj, style: {...obj.style, tail: {...obj.style.tail, maxLengthCells: v}}});
@@ -362,6 +363,9 @@ const Editor = () => {
                 <Slider label="Grid size" value={obj?.grid?.size ?? 15} min={2} max={26} step={1} show={(v) => `${v}x${v}`} onChange={(v) => obj && save({...obj, grid: {...obj.grid, size: v}})} disabled={!obj} />
                 <span className="hint">The cells in the JSON (and the grid in the preview) go from A1 to {String.fromCharCode(64 + (obj?.grid?.size ?? 15))}{obj?.grid?.size ?? 15}.</span>
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
+                <Slider label="3D turn" value={eff?.bubble3d?.slant ?? BUBBLE3D.defaultSlant} min={BUBBLE3D.slantMin} max={BUBBLE3D.slantMax} step={BUBBLE3D.slantStep} show={(v) => (v > 0 ? `${v.toFixed(1)}°` : "flat")} onChange={(v) => set3d({slant: v})} disabled={!obj} />
+                <Slider label="3D depth" value={eff?.bubble3d?.depth ?? BUBBLE3D.defaultDepth} min={BUBBLE3D.depthMin} max={BUBBLE3D.depthMax} step={BUBBLE3D.depthStep} show={(v) => v.toFixed(2)} onChange={(v) => set3d({depth: v})} disabled={!obj} />
+                <span className="hint">3D: every bubble turns a random amount up to this (left side toward you, right side away); depth is its thickness in grid cells.</span>
                 <Slider label="Tail length" value={tailCells} min={TAIL.min} max={TAIL.max} step={TAIL.step} show={(v) => v.toFixed(2)} onChange={setTail} disabled={!obj} />
                 <Slider label="Name bubble" value={scaleOf("name")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("name", v)} disabled={!obj} />
                 <Slider label="Impact burst" value={eff?.impact?.size ?? IMPACT.defaultSize} min={IMPACT.min} max={IMPACT.max} step={IMPACT.step} show={(v) => (v > 0 ? `x${v.toFixed(2)}` : "off")} onChange={setImpact} disabled={!obj} />

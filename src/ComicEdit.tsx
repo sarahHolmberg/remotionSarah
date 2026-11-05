@@ -1,12 +1,12 @@
 // src/ComicEdit.tsx
-// NOT NEW: existing file, changed (bubbles sit close to their cells: the Tail length slider sets the gap, only a little randomness on top)
+// NOT NEW: existing file, changed (3D bubbles: thick discs turned around their vertical axis, left side forward; JSON "bubble3d")
 
 import {useMemo} from "react";
 import {AbsoluteFill, Audio, Easing, Img, interpolate, OffthreadVideo, random, Sequence, staticFile, useCurrentFrame, useVideoConfig} from "remotion";
 import {loadFont} from "@remotion/google-fonts/ComicNeue"; // the only font the JSON can name for now
 import {cellRect} from "./gridCell";
 import {blobsAt, chainGroups, chainSchedule, type ChainBlob} from "./bubbleTimeline";
-import {IMPACT, type Caption, type Spec} from "./spec";
+import {BUBBLE3D, IMPACT, type Caption, type Spec} from "./spec";
 
 const {fontFamily} = loadFont("normal", {weights: ["700"]});
 const ADV = 0.66; // average capital-letter width as a fraction of font size (only sizes the bubble)
@@ -23,6 +23,29 @@ const BUBBLE_H_PAD = 0.55; // extra half-height, in text sizes
 const POP_FILE = "universfield-bubble-pop-05-323639.mp3"; // file in /public
 const POP_HIT = 0.26; // seconds into the file where the actual "pop" sits (it starts with a short swell, the pop is at about 0.26s)
 const POP_VOLUME = 1; // 0 to 1
+
+// ---- 3D BUBBLES (change here; the turn and the thickness are sliders in the editor tab, JSON "bubble3d") ----
+// Every bubble is a thick disc turned around its vertical axis: the left side comes forward, the right side goes back,
+// so its left edge shows. Each bubble turns a random share of the slider (the same in every frame). Drawn with our own
+// perspective math (like CSS perspective + rotateY) so the tails still start on the turned edge and end exactly on their cell.
+const SLANT_MIN_SHARE = 0.6; // each bubble turns between this share and all of the slider's degrees
+const PERSPECTIVE = 1.2; // the eye's distance, in video widths (smaller = stronger perspective)
+const SIDE_SHADE = 0.8; // the edge is the fill color made this much darker
+
+const shade = (hex: string, k: number) => `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, "0")).join("")}`;
+// a point of a bubble turned by a around the vertical axis through (cx, cy): dx, dy from the center, dz < 0 = behind the front face
+const projector = (cx: number, cy: number, a: number, f: number) => (dx: number, dy: number, dz = 0): P => {
+  const X = dx * Math.cos(a) + dz * Math.sin(a);
+  const Z = -dx * Math.sin(a) + dz * Math.cos(a); // toward the eye is positive
+  const s = f / (f - Z);
+  return {x: cx + X * s, y: cy + dy * s};
+};
+// an ellipse (center ox, oy from the bubble's center) on the turned bubble, as a path
+const ovalPath = (pr: ReturnType<typeof projector>, ox: number, oy: number, rx: number, ry: number, dz: number) =>
+  `M ${Array.from({length: 48}, (_, i) => {
+    const q = pr(ox + rx * Math.cos((i / 48) * 2 * Math.PI), oy + ry * Math.sin((i / 48) * 2 * Math.PI), dz);
+    return `${q.x.toFixed(2)} ${q.y.toFixed(2)}`;
+  }).join(" L ")} Z`;
 
 // ---- IMPACT BURST (change here; the size is a slider in the editor tab, JSON "impact") ----
 const IMPACT_FILE = "impact-burst.png"; // file in /public: white burst on a see-through background (made from burst.png)
@@ -92,6 +115,9 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const chainWindow = spec.chain && spec.chain.enabled !== false ? spec.chain.windowSeconds : 0; // 0 = no chain, one bubble at a time
   const groups = useMemo(() => chainGroups(captions, chainWindow), [captions, chainWindow]);
   const sch = useMemo(() => chainSchedule(captions, groups, tm), [captions, groups, tm]);
+  const slantMax = ((spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant) * Math.PI) / 180;
+  const depthCells = spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth;
+  const eye = width * PERSPECTIVE;
   if (frame === 0) console.log(`[Comic] chain: ${chainWindow ? `window ${chainWindow}s, groups ${groups.map((g) => g.map((k) => captions[k].id).join("+")).join(" | ")}` : "off"}`);
   const pictureUrl = spec.pictureSrc ?? (spec.picture ? staticFile(spec.picture.file) : undefined);
   if (frame === 0) console.log(`[Comic] bubble size: normal x${normalScale}, name x${nameScale}`);
@@ -152,7 +178,8 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
         pic = {x: px, y: py, rp};
         console.log(`[Comic] #${cap.id} NAME BUBBLE x${scale}: words bubble ${(rx * 2).toFixed(0)}x${(ry * 2).toFixed(0)}px at ${c.x.toFixed(0)},${c.y.toFixed(0)}, tail to ${cap.cells.join("+")}, text ${fs.toFixed(0)}px, picture circle r=${rp.toFixed(0)}px at ${px.toFixed(0)},${py.toFixed(0)}${dx || dy ? `, moved ${dx.toFixed(0)},${dy.toFixed(0)} to fit the frame` : ""}`);
       } else console.log(`[Comic] #${cap.id} "${cap.text}" tail to ${cap.cells.join("+")}, bubble x${scale} ${(rx * 2).toFixed(0)}x${(ry * 2).toFixed(0)}px at ${c.x.toFixed(0)},${c.y.toFixed(0)}`);
-      return {c, rx, ry, lines, fs, lh, pic, tips, target};
+      const slant = slantMax * (SLANT_MIN_SHARE + (1 - SLANT_MIN_SHARE) * random(`slant-${cap.id}`)); // radians, left side forward
+      return {c, rx, ry, lines, fs, lh, pic, tips, target, slant};
     };
 
     const items = captions.map((cap) => build(cap, cap.id === NAME_BUBBLE_ID ? nameScale : normalScale));
@@ -194,7 +221,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     });
     const zoomList = [...zooms].sort((a, b) => a.from - b.from).map((z) => ({...z, origin: centerOf(z.cells, width, height, N)}));
     return {cw, items, hops, zooms: zoomList};
-  }, [captions, style, zooms, N, width, height, normalScale, nameScale, groups]);
+  }, [captions, style, zooms, N, width, height, normalScale, nameScale, groups, slantMax]);
 
   // key moments, logged once each
   captions.forEach((cap, k) => {
@@ -320,13 +347,22 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
       const g = geo.items[b.k];
       const rx = (R + (g.rx - R) * b.o) * b.sc + grow * b.sc;
       const ry = (R + (g.ry - R) * b.o) * b.sc + grow * b.sc;
+      const pr = projector(g.c.x, g.c.y, g.slant, eye);
 
       // name bubble: the picture bubble starts inside the ball and moves up-left while it grows
-      let pic = null;
-      if (g.pic) {
-        const rp = (R + (g.pic.rp - R) * b.o) * b.sc + grow * b.sc;
-        pic = <circle cx={g.c.x + (g.pic.x - g.c.x) * b.o} cy={g.c.y + (g.pic.y - g.c.y) * b.o} r={rp} fill={color} />;
-      }
+      const pic = g.pic ? {x: (g.pic.x - g.c.x) * b.o, y: (g.pic.y - g.c.y) * b.o, r: (R + (g.pic.rp - R) * b.o) * b.sc + grow * b.sc} : null;
+      // the bubble at depth dz: the oval and the picture circle on the turned disc
+      const face = (dz: number, fill: string, key: string) => (
+        <g key={key}>
+          {pic && <path d={ovalPath(pr, pic.x, pic.y, pic.r, pic.r, dz)} fill={fill} />}
+          <path d={ovalPath(pr, 0, 0, rx, ry, dz)} fill={fill} />
+        </g>
+      );
+      // the thickness: copies of the bubble from the back to just behind the front, close enough together to look solid
+      const depth = depthCells * geo.cw * b.sc;
+      const nSlices = depth > 0.5 && g.slant > 0 ? Math.min(24, Math.ceil((depth * Math.sin(g.slant)) / 1.2) + 1) : 0;
+      const sideColor = grow > 0 ? color : shade(color, SIDE_SHADE); // the ink pass draws the outline, the fill pass a darker edge
+      const slices = Array.from({length: nSlices}, (_, i) => face(-depth * (1 - i / nSlices), sideColor, `s${i}`));
 
       // comic tails: a thin curved spike from the bubble edge to each of the caption's cells, grows as the bubble opens
       const tails = !style.tail.enabled || b.o <= 0.02
@@ -336,7 +372,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
             const dy = tip0.y - g.c.y;
             const dist = Math.hypot(dx, dy) || 1;
             const phi = Math.atan2(g.rx * dy, g.ry * dx); // point of the ellipse that faces the cell
-            const onEllipse = (a: number, k: number): P => ({x: g.c.x + k * g.rx * Math.cos(a), y: g.c.y + k * g.ry * Math.sin(a)});
+            const onEllipse = (a: number, k: number): P => pr(k * g.rx * Math.cos(a), k * g.ry * Math.sin(a)); // on the turned front face
             const base = onEllipse(phi, 1);
             const gap = Math.hypot(tip0.x - base.x, tip0.y - base.y) || 1;
             const reaches = dist > Math.hypot(base.x - g.c.x, base.y - g.c.y); // false when the bubble covers the cell: then no tail shows
@@ -353,9 +389,9 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           });
       return (
         <>
+          {slices}
           {tails}
-          {pic}
-          <ellipse cx={g.c.x} cy={g.c.y} rx={rx} ry={ry} fill={color} />
+          {face(0, color, "front")}
         </>
       );
     }
@@ -424,8 +460,8 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const impactSize = spec.impact?.size ?? 0;
   const impactAt = spec.impact?.at ?? [];
   const impactIds = spec.impact?.captions ?? (impactAt.length ? [] : [captions.find((c) => c.id !== NAME_BUBBLE_ID)?.id ?? captions[0].id]);
-  const burst = (key: string, seed: string, x: number, y: number, d: number) => (
-    <foreignObject key={key} x={x - d / 2} y={y - d / 2} width={d} height={d}>
+  const burst = (key: string, seed: string, x: number, y: number, d: number, turn = 0) => (
+    <foreignObject key={key} x={x - d / 2} y={y - d / 2} width={d} height={d} transform={turn ? `translate(${x} ${y}) scale(${Math.cos(turn)} 1) translate(${-x} ${-y})` : undefined}>
       <Img src={staticFile(IMPACT_FILE)} style={{width: "100%", height: "100%", objectFit: "contain", transform: `rotate(${random(seed) * 360}deg)`, filter: `drop-shadow(0 0 ${Math.max(1, lw)}px ${style.ink})`}} />
     </foreignObject>
   );
@@ -448,7 +484,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           const g = geo.items[b.k];
           const d = impactSize * 2 * g.rx * b.o * b.sc; // grows and shrinks with its bubble
           if (d < 2) return null;
-          return burst(`impact${i}`, `impact-${captions[b.k].id}`, g.c.x, g.c.y, d); // every burst turned its own way
+          return burst(`impact${i}`, `impact-${captions[b.k].id}`, g.c.x, g.c.y, d, g.slant); // every burst turned its own way, and turned in 3D like its bubble
         })
       : null;
 
@@ -463,8 +499,11 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
     const r = (R + (g.pic.rp - R) * blob.o) * blob.sc * NAME_PIC_INSET;
     const a = Math.max(0, Math.min(1, (blob.o - 0.7) / 0.3)); // the photo fades in when the bubble is nearly open
     if (a <= 0 || r < 2) return null;
+    // on the turned disc: moved and squashed like the picture circle around it
+    const q = projector(g.c.x, g.c.y, g.slant, eye)(px - g.c.x, py - g.c.y);
+    const s = eye / (eye + (px - g.c.x) * Math.sin(g.slant));
     return (
-      <foreignObject x={px - r} y={py - r} width={2 * r} height={2 * r} style={{opacity: a}}>
+      <foreignObject x={px - r} y={py - r} width={2 * r} height={2 * r} style={{opacity: a}} transform={`translate(${q.x} ${q.y}) scale(${Math.cos(g.slant) * s} ${s}) translate(${-px} ${-py})`}>
         <div style={{width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden"}}>
           <Img src={pictureUrl} style={{width: "100%", height: "100%", objectFit: "cover"}} />
         </div>
@@ -513,8 +552,13 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           if (t < cap.from || t >= out) return null;
           const span = Math.max(cap.to - cap.from, 0.05);
           const exit = interpolate(t, [out - tm.exitFadeSeconds, out], [1, 0], clamp);
-          const {c, lines, fs, lh, pic} = geo.items[k];
+          const {c, lines, fs, lh, pic, slant} = geo.items[k];
           const isName = !!pic;
+          // a line of words on the turned disc: squashed sideways, and sloping like the disc's own lines do in perspective
+          const onDisc = (y: number) => {
+            const m = (-(y - c.y) * Math.sin(slant)) / eye;
+            return `matrix(${Math.cos(slant)} ${m} 0 1 ${c.x * (1 - Math.cos(slant))} ${-m * c.x})`;
+          };
           const rows = lines.map((line, li) => {
             const t0 = cap.from + (lines.length > 1 ? li / (lines.length - 1) : 0) * 0.4 * span; // soft stagger, one word at a time
             const p = interpolate(t, [t0, t0 + 0.6 * span], [0, 1], {...clamp, easing: Easing.out(Easing.cubic)});
@@ -530,7 +574,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
             } as const;
             // name bubble words: fill color with a thick ink outline and an offset shadow, like a POW burst
             return isName ? (
-              <g key={`${k}-${li}`} opacity={p * exit}>
+              <g key={`${k}-${li}`} opacity={p * exit} transform={onDisc(common.y)}>
                 <text {...common} transform={`translate(${fs * 0.05} ${fs * 0.07})`} fill={style.ink} stroke={style.ink} strokeWidth={fs * 0.2} strokeLinejoin="round">
                   {line}
                 </text>
@@ -539,7 +583,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
                 </text>
               </g>
             ) : (
-              <text key={`${k}-${li}`} {...common} opacity={p * exit} fill={style.ink}>
+              <text key={`${k}-${li}`} {...common} opacity={p * exit} fill={style.ink} transform={onDisc(common.y)}>
                 {line}
               </text>
             );
