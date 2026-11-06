@@ -4,3 +4,4 @@ dist
 build
 out
 cloudbuild.yaml
+.claude

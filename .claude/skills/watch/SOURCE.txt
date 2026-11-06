@@ -1,0 +1,2 @@
+Installed from https://github.com/bradautomates/claude-video (skills/watch), version 0.3.2, commit 03ceb42.
+MIT license (LICENSE). The plugin-only SessionStart hook and the packaging script are left out.
