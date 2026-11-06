@@ -444,9 +444,6 @@ const Editor = () => {
           </span>
           Preview tab
         </a>
-        <a className="taskbtn" href="/" style={{textDecoration: "none"}}>
-          ‹ Transcribe
-        </a>
         <span className="taskbtn">Comic editor</span>
       </div>
     </>

@@ -7,7 +7,6 @@ import {spawn} from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {makeProfileHandler} from "../server/profiles.mjs";
-import {makeTranscribeHandler} from "../server/transcribe.mjs";
 
 const ROOT = process.cwd(); // run `npm run app` from the repo root
 const PROPS = "scripts/export.json"; // the JSON the render reads (your own scripts/edit.json is not touched)
@@ -21,13 +20,11 @@ const renderApi = (): Plugin => ({
   name: "render-api",
   configureServer(server) {
     const profiles = makeProfileHandler(ROOT); // saved editor settings (server/profiles.mjs)
-    const transcribe = makeTranscribeHandler(); // recording -> text (server/transcribe.mjs)
     server.middlewares.use((req, res, next) => {
       const url = new URL(req.url ?? "", "http://x");
       if (!url.pathname.startsWith("/api/")) return next();
       log(`${req.method} ${url.pathname}`);
       if (profiles(req, res, url)) return;
-      if (transcribe(req, res, url)) return;
 
       // 1. the video picked in tab 1 (it only lives in the browser) -> public/, so the render can read it
       if (req.method === "POST" && url.pathname === "/api/upload") {
@@ -135,8 +132,7 @@ export default defineConfig({
     outDir: "../dist",
     emptyOutDir: true,
     copyPublicDir: false,
-    // index.html = the transcription page (the first page), editor.html = the comic editor, preview.html = the preview on its own
-    rollupOptions: {input: {transcribe: path.resolve(ROOT, "app/index.html"), editor: path.resolve(ROOT, "app/editor.html"), preview: path.resolve(ROOT, "app/preview.html")}},
+    rollupOptions: {input: {editor: path.resolve(ROOT, "app/index.html"), preview: path.resolve(ROOT, "app/preview.html")}},
   },
   server: {
     host: true, // host: true so a Codespace can forward the port
