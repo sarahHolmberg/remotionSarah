@@ -32,6 +32,7 @@ Every caption is an object: {"id": n, "text": "...", "from": t, "to": t, "cells"
 
 === 5. THE POST CAPTION AND THE USERNAME ===
 - "caption" is the text for the Instagram / TikTok post. It goes in the post's caption box when the video is exported from the server.
+- "username" is the dancer's Instagram username, without the @. The server tags this person on the post, so it is NEVER empty.
 - Username: the account's handle. If the speaker says it ("username lena underscore xr"), use it: lowercase, no spaces, "underscore" = _, "dot" = . . If the speaker does not say it, build it from the name: lowercase with the spaces removed ("Lena XR" -> "lenaxr").
 - If the speaker dictates a caption ("Caption, ..."), write it as clean text with normal capitals and punctuation, without changing its meaning. "hashtag dance" = #dance, "at sign" / "at" before a name = @. EVERY time the person's name (or part of it) is mentioned in the caption, write @username instead ("Lena XR killing it" -> "@lenaxr killing it").
 - If the speaker dictates no caption, use "caption": "". Never invent a caption.
@@ -70,7 +71,8 @@ Use "video.mp4" for video.file unless the speaker names the video file.
   "nameZoom": {"percent": 4, "seconds": 0.5},
   "popSound": {"enabled": true, "offsetSeconds": 0},
   "bubbleScale": {"normal": 1, "name": 1},
-  "caption": "...the post caption, or empty..."
+  "caption": "...the post caption, or empty...",
+  "username": "...the dancer's username, never empty..."
 }
 Do not add, rename or remove any field. Do not add any field that is not shown here (except the optional "tail" on a caption). The mascot is the program's default style, so no field is needed to turn it on.
 
@@ -86,7 +88,7 @@ Keep the values above unless the speaker clearly asks for a change:
 2. Every action the speaker listed is there, sorted by time, ids 1..n with no gaps.
 3. Every cell is a letter A-O plus a number 1-15, and the main cell is first.
 4. All timing rules in section 4 hold for every caption.
-5. The post caption uses @username for every mention of the person, or is "" if none was dictated.
+5. "username" is filled in (lowercase, no @, no spaces). The post caption uses @username for every mention of the person, or is "" if none was dictated.
 6. Nothing outside the JSON object.
 
 === EXAMPLE ===
@@ -96,8 +98,9 @@ Captions part of the correct answer:
     {"id": 2, "text": "kick out", "from": 3.045, "to": 3.245, "cells": ["E9"], "mode": "center", "out": "default"},
     {"id": 3, "text": "swing hands", "from": 3.8, "to": 4.0, "cells": ["K4", "F5"], "mode": "center", "out": "default"},
     {"id": 4, "text": "cross jump", "from": 5.316, "to": 5.516, "cells": ["G14"], "mode": "center", "out": "default"}
-Post caption part of the correct answer:
-    "caption": "@stellarevheim with the smoothest footwork #dance"
+Post caption and username part of the correct answer:
+    "caption": "@stellarevheim with the smoothest footwork #dance",
+    "username": "stellarevheim"
 (In the real answer the whole JSON from section 6 is output, not only these parts.)
 
 TRANSCRIPT:

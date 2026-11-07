@@ -1,8 +1,9 @@
 // server/instagram.mjs
 // NEW FILE: post exported videos straight to Instagram (Meta's Graph API, Facebook Login route), on a schedule.
 //
-// Scheduling: an export goes into the next free slot of the daily posting times (17:00, 19:00, 20:00 Stockholm),
-// or at a time you pick, or right away. Each post is a "job": the video waits in the bucket (videos/...), the job in
+// Every export is posted twice at the same time: as a Reel (the whole video, caption, tags, collaborators) and as a
+// Story (the first STORY_SECONDS, cut with Remotion's own ffmpeg).
+// Scheduling: into the next free slot of the daily posting times (17:00 and 20:00 Stockholm), or at a time you pick, or right away. Each post is a "job": the video waits in the bucket (videos/...), the job in
 // jobs/<id>.json, and a Cloud Task calls POST /api/instagram/run?job=<id> at the posting time.
 // Publishing (Meta has no scheduling of its own): create a container from the video's public link -> wait until
 // Instagram has processed it (FINISHED) -> media_publish. The video is deleted from the bucket after posting.
@@ -12,12 +13,16 @@
 // INSTAGRAM_QUEUE (Cloud Tasks queue, default instagram-posts), TASKS_LOCATION (default us-central1).
 //
 //   GET    /api/instagram/queue        -> {slots: [next free times], jobs: [...]}
-//   POST   /api/instagram/schedule     {type: "REELS"|"STORIES", caption, userTags, collaborators, coverSeconds, when: "slot"|"now"|"<ISO>"}
+//   POST   /api/instagram/schedule     {caption, userTags, collaborators, coverSeconds, when: "slot"|"now"|"<ISO>"} -> {jobs: [reel, story]}
 //   POST   /api/instagram/run?job=<id> (Cloud Tasks at the posting time, or the Retry button)
 //   DELETE /api/instagram/jobs/<id>    (cancel a scheduled post / remove a finished one)
 
 import fs from "node:fs";
 import crypto from "node:crypto";
+import os from "node:os";
+import path from "node:path";
+import {execFile} from "node:child_process";
+import {promisify} from "node:util";
 import {BUCKET, createTask, deleteObject, deleteTask, getJson, listObjects, publicUrl, putJson, putObject, randomName} from "./gcp.mjs";
 
 const IG_USER = process.env.IG_USER_ID || "";
@@ -28,7 +33,8 @@ const GRAPH = "https://graph.facebook.com/v26.0";
 
 // ---- POSTING TIMES (change here) ----
 const TZ = "Europe/Stockholm";
-const SLOT_HOURS = [17, 19, 20]; // the daily posting times, Stockholm time
+const SLOT_HOURS = [17, 20]; // the daily posting times, Stockholm time (two a day, 3 hours apart)
+const STORY_SECONDS = 10; // the Story is the first this many seconds of the export
 const LEAD_MINUTES = 10; // a slot closer than this is skipped (the video needs a moment to be ready)
 const MAX_DAYS = 25; // how far ahead posts can go (the bucket deletes files after 30 days)
 const PROCESS_MINUTES = 10; // how long to wait for Instagram to process a video before giving up
@@ -139,6 +145,16 @@ const run = async (id) => {
   return job;
 };
 
+// the Story's video: the first STORY_SECONDS of the export (stream copy: no re-encoding, takes a second or two)
+const cutStory = async (file) => {
+  const out = path.join(os.tmpdir(), `story-${crypto.randomBytes(4).toString("hex")}.mp4`);
+  const args = ["remotion", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", file, "-t", String(STORY_SECONDS), "-c", "copy", "-movflags", "+faststart", out];
+  await promisify(execFile)(process.platform === "win32" ? "npx.cmd" : "npx", args, {timeout: 120000});
+  const data = fs.readFileSync(out);
+  fs.rmSync(out, {force: true});
+  return data;
+};
+
 // a problem with what was typed in the panel (answered with 400, not logged as a server error)
 class InputError extends Error {}
 
@@ -188,38 +204,49 @@ export const makeInstagramHandler = (outFile) => {
         for await (const c of req) body += c;
         const b = JSON.parse(body);
         if (!fs.existsSync(outFile)) return send(res, 400, {error: "No exported video yet: press Export video first."});
-        const type = b.type === "STORIES" ? "STORIES" : "REELS";
-        const reel = type === "REELS";
-        const job = {
+        const shared = {status: "scheduled", createdAt: new Date().toISOString()};
+        const reel = {
+          ...shared,
           id: crypto.randomBytes(8).toString("hex"),
-          type,
-          caption: reel ? String(b.caption ?? "").slice(0, 2200) : "",
-          userTags: reel ? names(b.userTags, "Tag people", 20) : [],
-          collaborators: reel ? names(b.collaborators, "Collaborators", 3) : [],
-          thumbOffsetMs: reel && Number(b.coverSeconds) > 0 ? Math.round(Number(b.coverSeconds) * 1000) : 0,
-          status: "scheduled",
-          createdAt: new Date().toISOString(),
+          type: "REELS",
+          caption: String(b.caption ?? "").slice(0, 2200),
+          userTags: names(b.userTags, "Tag people", 20),
+          collaborators: names(b.collaborators, "Collaborators", 3),
+          thumbOffsetMs: Number(b.coverSeconds) > 0 ? Math.round(Number(b.coverSeconds) * 1000) : 0,
         };
-        // when
-        if (b.when === "now") job.publishAt = new Date().toISOString();
+        if (!reel.userTags.length) throw new InputError("Tag people: the dancer must be tagged (their @username).");
+        const story = {...shared, id: crypto.randomBytes(8).toString("hex"), type: "STORIES", caption: "", userTags: [], collaborators: [], thumbOffsetMs: 0, reel: reel.id};
+        // when (both at the same time)
+        let at;
+        if (b.when === "now") at = new Date().toISOString();
         else if (b.when === "slot" || !b.when) {
           const jobs = await allJobs();
           const taken = new Set(jobs.filter((j) => j.status === "scheduled" || j.status === "publishing").map((j) => Date.parse(j.publishAt)));
-          [job.publishAt] = freeSlots(taken, 1);
-          if (!job.publishAt) return send(res, 400, {error: `Every posting time in the next ${MAX_DAYS} days is taken.`});
+          [at] = freeSlots(taken, 1);
+          if (!at) return send(res, 400, {error: `Every posting time in the next ${MAX_DAYS} days is taken.`});
         } else {
           const t = Date.parse(b.when);
           if (!Number.isFinite(t) || t < Date.now() + 60000 || t > Date.now() + MAX_DAYS * 86400000) return send(res, 400, {error: `Pick a time between now and ${MAX_DAYS} days ahead.`});
-          job.publishAt = new Date(t).toISOString();
+          at = new Date(t).toISOString();
         }
-        job.video = await putObject(randomName("videos", "mp4"), fs.readFileSync(outFile), "video/mp4");
-        await putJson(jobName(job.id), job);
-        log(`job ${job.id}: ${type} at ${job.publishAt}, video ${job.video}`);
+        reel.publishAt = story.publishAt = at;
+        reel.video = await putObject(randomName("videos", "mp4"), fs.readFileSync(outFile), "video/mp4");
+        story.video = await putObject(randomName("videos", "mp4"), await cutStory(outFile), "video/mp4");
+        story.caption = `(Story, first ${STORY_SECONDS} s)`; // only shown in the panel's list; Stories get no caption
+        const jobs = [reel, story];
+        for (const job of jobs) await putJson(jobName(job.id), job);
+        log(`jobs ${reel.id} (Reel) + ${story.id} (Story) at ${at}`);
 
-        if (b.when === "now") return send(res, 200, await run(job.id));
-        job.task = await createTask({queue: QUEUE, location: LOCATION, url: `${process.env.SERVICE_URL || `https://${req.headers.host}`}/api/instagram/run?job=${job.id}`, at: job.publishAt, headers: {"X-Task-Key": TASK_KEY}});
-        await putJson(jobName(job.id), job);
-        return send(res, 200, job);
+        if (b.when === "now") {
+          const done = [];
+          for (const job of jobs) done.push(await run(job.id)); // one after the other: each waits for Instagram to process its video
+          return send(res, 200, {jobs: done});
+        }
+        for (const job of jobs) {
+          job.task = await createTask({queue: QUEUE, location: LOCATION, url: `${process.env.SERVICE_URL || `https://${req.headers.host}`}/api/instagram/run?job=${job.id}`, at, headers: {"X-Task-Key": TASK_KEY}});
+          await putJson(jobName(job.id), job);
+        }
+        return send(res, 200, {jobs});
       }
 
       const del = /^\/api\/instagram\/jobs\/([a-f0-9]{16})$/.exec(url.pathname);

@@ -1,7 +1,8 @@
 // app/instagram.tsx
 // NEW FILE: the "Post to Instagram" panel of the preview tab (server/instagram.mjs does the work).
-// Reel or Story, caption with @mentions, tag people, collaborators, cover frame; into the next free posting time,
-// at a chosen time, or now. Below: the queue of upcoming posts (cancel, retry) and the last ones posted.
+// Every export goes out as BOTH a Reel (whole video: caption with @mentions, tag people, collaborators, cover frame) and a
+// Story (the first 10 seconds), at the same time: the next free posting time, a chosen time, or now.
+// The JSON's "caption" and "username" fill the caption and the people to tag. Below: the queue of upcoming posts (cancel, retry) and the last ones posted.
 
 import {useEffect, useState} from "react";
 
@@ -20,12 +21,12 @@ const json = async (r: Response) => {
 };
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
-export const PostToInstagram = ({exported, seconds, startCaption}: {exported: boolean; seconds: number; startCaption?: string}) => {
+export const PostToInstagram = ({exported, seconds, startCaption, startTag}: {exported: boolean; seconds: number; startCaption?: string; startTag?: string}) => {
   const [queue, setQueue] = useState<Queue | null>(null);
-  const [type, setType] = useState<"REELS" | "STORIES">("REELS");
   const [caption, setCaption] = useState("");
   useEffect(() => void (startCaption && setCaption(startCaption)), [startCaption]); // the JSON's "caption" fills the box
   const [tags, setTags] = useState("");
+  useEffect(() => void (startTag && setTags(`@${startTag.replace(/^@/, "")}`)), [startTag]); // the dancer is always tagged
   const [collabs, setCollabs] = useState("");
   const [cover, setCover] = useState(0);
   const [when, setWhen] = useState<When>("slot");
@@ -62,16 +63,18 @@ export const PostToInstagram = ({exported, seconds, startCaption}: {exported: bo
   };
 
   const schedule = async () => {
-    const body = {type, caption, userTags: list(tags), collaborators: list(collabs), coverSeconds: cover, when: when === "at" ? new Date(at).toISOString() : when};
+    const body = {caption, userTags: list(tags), collaborators: list(collabs), coverSeconds: cover, when: when === "at" ? new Date(at).toISOString() : when};
     console.log("[Instagram] schedule", body);
-    const d = await act(when === "now" ? "Posting: Instagram is processing the video (up to a few minutes)..." : "Scheduling...", fetch("/api/instagram/schedule", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}));
+    const d = await act(when === "now" ? "Posting: Instagram is processing the Reel, then the Story (up to a few minutes each)..." : "Scheduling...", fetch("/api/instagram/schedule", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}));
     if (!d) return;
-    if (d.status === "failed") setMsg(`Posting failed: ${d.error}`);
-    else setMsg(d.status === "posted" ? `Posted: ${d.permalink ?? "done"}` : `Scheduled for ${show(d.publishAt)}.`);
-    if (d.status !== "failed") [setCaption, setTags, setCollabs].forEach((f) => f(""));
+    const jobs: Job[] = d.jobs ?? [];
+    const name = (j: Job) => (j.type === "REELS" ? "Reel" : "Story");
+    const failed = jobs.filter((j) => j.status === "failed");
+    if (failed.length) setMsg(failed.map((j) => `${name(j)} failed: ${j.error}`).join(" · "));
+    else setMsg(when === "now" ? `Posted: ${jobs.map((j) => `${name(j)} ${j.permalink ?? "done"}`).join(" · ")}` : `Reel + Story scheduled for ${show(jobs[0].publishAt)}.`);
+    if (!failed.length) [setCaption, setCollabs].forEach((f) => f(""));
   };
 
-  const reel = type === "REELS";
   const box = {background: "#1e1830", padding: 10, borderRadius: 6, width: "min(560px, 92vw)", fontSize: 13, display: "flex", flexDirection: "column" as const, gap: 8};
   const input = {width: "100%", boxSizing: "border-box" as const, fontSize: 14};
   const upcoming = queue?.jobs.filter((j) => j.status !== "posted") ?? [];
@@ -81,28 +84,15 @@ export const PostToInstagram = ({exported, seconds, startCaption}: {exported: bo
       <b>Post to Instagram</b>
       {queue && (
         <>
-          <div style={{display: "flex", gap: 14}}>
-            {(["REELS", "STORIES"] as const).map((t) => (
-              <label key={t} style={{display: "flex", gap: 4, alignItems: "center"}}>
-                <input type="radio" checked={type === t} onChange={() => setType(t)} />
-                {t === "REELS" ? "Reel" : "Story"}
-              </label>
-            ))}
-          </div>
-          {reel ? (
-            <>
-              <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={4} maxLength={2200} placeholder="Caption, @mentions work here" style={input} />
-              <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tag people: @stella @noor" style={input} />
-              <input value={collabs} onChange={(e) => setCollabs(e.target.value)} placeholder="Collaborators (up to 3, they get an invite): @mirrors.dance" style={input} />
-              <label style={{display: "flex", gap: 8, alignItems: "center"}}>
-                Cover frame
-                <input type="range" min={0} max={Math.max(0, Math.floor(seconds * 10) / 10)} step={0.1} value={cover} onChange={(e) => setCover(Number(e.target.value))} style={{flex: 1}} />
-                <span style={{width: 110, flex: "none"}}>{cover > 0 ? `${cover.toFixed(1)} s` : "Instagram picks"}</span>
-              </label>
-            </>
-          ) : (
-            <span style={{opacity: 0.7}}>Stories can't have a caption, tags or collaborators through Instagram's API.</span>
-          )}
+          <span style={{opacity: 0.7}}>Posts both: a Reel (the whole video) and a Story (the first 10 seconds; Instagram's API gives Stories no caption or tags).</span>
+          <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={4} maxLength={2200} placeholder="Caption, @mentions work here" style={input} />
+          <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tag people (the dancer is required): @stella @noor" style={{...input, outline: list(tags).length ? undefined : "2px solid #ff7a7a"}} />
+          <input value={collabs} onChange={(e) => setCollabs(e.target.value)} placeholder="Collaborators (up to 3, they get an invite): @mirrors.dance" style={input} />
+          <label style={{display: "flex", gap: 8, alignItems: "center"}}>
+            Cover frame
+            <input type="range" min={0} max={Math.max(0, Math.floor(seconds * 10) / 10)} step={0.1} value={cover} onChange={(e) => setCover(Number(e.target.value))} style={{flex: 1}} />
+            <span style={{width: 110, flex: "none"}}>{cover > 0 ? `${cover.toFixed(1)} s` : "Instagram picks"}</span>
+          </label>
           <div style={{display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center"}}>
             <label style={{display: "flex", gap: 4, alignItems: "center"}}>
               <input type="radio" checked={when === "slot"} onChange={() => setWhen("slot")} />
@@ -118,8 +108,8 @@ export const PostToInstagram = ({exported, seconds, startCaption}: {exported: bo
               Now
             </label>
           </div>
-          <button onClick={schedule} disabled={busy || !exported || (when === "at" && !at)} style={{padding: "8px 16px", fontSize: 14, alignSelf: "flex-start", cursor: busy ? "wait" : "pointer"}}>
-            {!exported ? "Export the video first" : busy ? "Working..." : when === "now" ? `Post ${reel ? "Reel" : "Story"} now` : `Schedule ${reel ? "Reel" : "Story"}`}
+          <button onClick={schedule} disabled={busy || !exported || !list(tags).length || (when === "at" && !at)} style={{padding: "8px 16px", fontSize: 14, alignSelf: "flex-start", cursor: busy ? "wait" : "pointer"}}>
+            {!exported ? "Export the video first" : !list(tags).length ? "Tag the dancer first" : busy ? "Working..." : when === "now" ? "Post Reel + Story now" : "Schedule Reel + Story"}
           </button>
         </>
       )}
