@@ -14,6 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import {renderMedia, selectComposition} from "@remotion/renderer"; // installed with @remotion/cli, same version
 import {makeProfileHandler} from "./profiles.mjs";
+import {isInboxCall, makeInboxHandler} from "./inbox.mjs";
 import {makeBufferHandler} from "./buffer.mjs";
 import {isInstagramTask, makeInstagramHandler} from "./instagram.mjs";
 
@@ -29,6 +30,7 @@ const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY || 2); // 2 was the fa
 const CHROMIUM = {gl: process.env.RENDER_GL || "swangle"};
 let busy = false;
 const profiles = makeProfileHandler(ROOT);
+const inbox = makeInboxHandler(ROOT);
 const buffer = makeBufferHandler(OUT);
 const instagram = makeInstagramHandler(OUT);
 
@@ -170,7 +172,7 @@ const render = async (req, res) => {
 http
   .createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
-    if (!authorized(req) && !isInstagramTask(req, url)) {
+    if (!authorized(req) && !isInstagramTask(req, url) && !isInboxCall(req, url)) {
       res.writeHead(401, {"WWW-Authenticate": 'Basic realm="Comic editor"'});
       return res.end("Password needed.");
     }
@@ -182,6 +184,7 @@ http
       return res.end(JSON.stringify({revision: process.env.K_REVISION ?? "local server"}));
     }
     if (profiles(req, res, url)) return;
+    if (inbox(req, res, url)) return;
     if (buffer(req, res, url)) return;
     if (instagram(req, res, url)) return;
     if (req.method === "POST" && url.pathname === "/api/upload") return upload(req, res, url);

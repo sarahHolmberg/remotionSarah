@@ -14,4 +14,5 @@ export type Mascot = {
   readonly plan: unknown[];
 };
 export declare const DEFAULTS: MascotSettings;
+export declare const SLIDERS: [key: string, label: string, min: number, max: number, step: number, unit: string][];
 export declare function createMascot(three: typeof THREE_NS, settings: MascotSettings): Mascot;

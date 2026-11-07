@@ -13,6 +13,12 @@
 // the settings Sarah chose (8 Nov 2026)
 export const DEFAULTS = {size: 12.5, walk: 1.4, run: 4.5, outline: 1.5, turn: 0.2, lead: 0.2, minShow: 0.85, sign: 5.8, reach: 2.4, jump: 0.8, lean: 0.3, skip: 0.9, push: 1, intro: 2.55};
 
+// the sliders for every setting, shared by the playground and the editor: [key, label, min, max, step, unit]
+export const SLIDERS = [["size","Size",8,30,0.5,"% of height"],["walk","Walk speed",0.5,3,0.1,"heights/s"],["run","Run speed",2,9,0.1,"heights/s"],
+  ["outline","Outline",0,6,0.5,"px"],["turn","3D turn",0,1,0.05,"rad"],["lead","Arrive early",0,1,0.05,"s"],["skip","Same spot if closer than",0,3,0.05,"s"],
+  ["push","Push to the edge",0,1,0.05,"x"],["intro","Intro size",1,3,0.05,"x"],["sign","Sign size",1.5,9,0.1,"x"],["reach","Sign arm",1,3,0.05,"x"],
+  ["jump","Jump up to",0,3,0.1,"heights"],["lean","Lean in",0,0.5,0.02,"rad"],["minShow","Words at least",0.2,1.5,0.05,"s"]];
+
 export function createMascot(THREE, S) {
 let W = 400, H = 711, N = 20, moves = [], start = null, plan = [], man;
 const world = new THREE.Group();

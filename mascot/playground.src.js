@@ -2,13 +2,12 @@
 // NEW FILE: the playground page's own code (controls, stage, video, JSON). The mascot itself is src/mascot/mascot.js.
 // Built into mascot/playground.html by `npm run mascot:playground`.
 import * as THREE from "three";
-import {createMascot, DEFAULTS} from "../src/mascot/mascot.js";
+import {createMascot, DEFAULTS, SLIDERS} from "../src/mascot/mascot.js";
 
 // ---------- settings (sliders) ----------
 // the settings Sarah chose (7 Nov 2026); these are the defaults
 const S = {...DEFAULTS};
-const SLIDERS = [["size","Size",8,30,0.5,"% of height"],["walk","Walk speed",0.5,3,0.1,"heights/s"],["run","Run speed",2,9,0.1,"heights/s"],
-  ["outline","Outline",0,6,0.5,"px"],["turn","3D turn",0,1,0.05,"rad"],["lead","Arrive early",0,1,0.05,"s"],["skip","Same spot if closer than",0,3,0.05,"s"],["push","Push to the edge",0,1,0.05,"x"],["intro","Intro size",1,3,0.05,"x"],["sign","Sign size",1.5,9,0.1,"x"],["reach","Sign arm",1,3,0.05,"x"],["jump","Jump up to",0,3,0.1,"heights"],["lean","Lean in",0,0.5,0.02,"rad"],["minShow","Words at least",0.2,1.5,0.05,"s"]];
+/* SLIDERS live in src/mascot/mascot.js, shared with the editor */
 try{Object.assign(S,JSON.parse(localStorage.getItem("mascot-settings-5")||"{}"))}catch{}
 const sl=document.getElementById("sliders");
 for(const [k,label,mn,mx,st,unit] of SLIDERS){

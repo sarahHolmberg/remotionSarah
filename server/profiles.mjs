@@ -1,7 +1,8 @@
 // server/profiles.mjs
 // NEW FILE: saved settings ("profiles") for the editor tab. Used by server/server.mjs (Cloud Run) and app/vite.config.ts (Codespace).
 //
-// With GITHUB_TOKEN set: each profile is a file profiles/<name>.json in the GitHub repo, on the branch "profiles"
+// On Cloud Run with MEDIA_BUCKET: each profile is profiles/<name>.json in the bucket (survives the server sleeping, free).
+// Otherwise, with GITHUB_TOKEN set: each profile is a file profiles/<name>.json in the GitHub repo, on the branch "profiles"
 // (not main, so saving a profile never starts a new deploy). Without it: the profiles/ folder next to the code
 // (fine in the Codespace; on Cloud Run that folder is lost when the server restarts).
 //
@@ -11,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import {makeStore, onCloud} from "./store.mjs";
 
 const TOKEN = process.env.GITHUB_TOKEN || "";
 const REPO = process.env.GITHUB_REPO || "sarahHolmberg/remotionSarah";
@@ -63,7 +65,8 @@ const local = (dir) => ({
 
 // Answers /api/profiles requests; returns false for any other path.
 export const makeProfileHandler = (root) => {
-  const store = TOKEN ? github : local(path.join(root, "profiles"));
+  // on Cloud Run with the bucket: Cloud Storage (always there, free); otherwise GitHub when a token is set; otherwise a local folder
+  const store = onCloud() ? (({where, list, get, put}) => ({where, list, get, save: put}))(makeStore("profiles", path.join(root, "profiles"))) : TOKEN ? github : local(path.join(root, "profiles"));
   log(`profiles are kept in ${store.where}`);
   const send = (res, status, body) => {
     res.writeHead(status, {"Content-Type": "application/json", "Cache-Control": "no-cache"});

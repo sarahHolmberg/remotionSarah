@@ -1,5 +1,6 @@
 // src/spec.ts
 // NOT NEW: existing file, changed (adds the optional "impact" {size, captions}, IMPACT and PROFILE_KEYS; the outro slider moved to the editor tab)
+import {DEFAULTS as MASCOT_DEFAULTS} from "./mascot/mascot";
 
 // The JSON contract: types + checks. Used by the render, the editor tab and the preview tab (one copy only).
 export type Timing = {
@@ -330,5 +331,6 @@ export const applyDefaults = (spec: Spec): Spec => ({
   nameZoom: {percent: spec.nameZoom?.percent ?? NAME_ZOOM.defaultPercent, seconds: spec.nameZoom?.seconds ?? NAME_ZOOM.defaultSeconds},
   outro: {secondsBeforeEnd: spec.outro?.secondsBeforeEnd ?? OUTRO.defaultSeconds, text: spec.outro?.text ?? OUTRO.defaultText},
   impact: {...spec.impact, size: spec.impact?.size ?? IMPACT.defaultSize},
-  bubble3d: {...spec.bubble3d, slant: spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant, depth: spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth},
+  bubble3d: {...spec.bubble3d, engine: spec.bubble3d?.engine ?? "mascot", slant: spec.bubble3d?.slant ?? BUBBLE3D.defaultSlant, depth: spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth}, // the mascot is the default style
+  mascot: {...MASCOT_DEFAULTS, ...spec.mascot},
 });
