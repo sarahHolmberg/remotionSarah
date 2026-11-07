@@ -45,7 +45,8 @@ export type Spec = {
   // captions: behind these captions' bubbles. at: on its own at a grid cell, from "from" to "to" seconds (to missing = from + 0.6).
   // With neither captions nor at, it sits behind the first normal caption.
   impact?: {size: number; captions?: number[]; at?: ImpactAt[]};
-  bubble3d?: {slant: number; depth: number; engine?: "svg" | "three"; seeThrough?: number}; // engine: "svg" = classic, "three" = Real 3D (Three.js); seeThrough: 0 = solid, 0.5 = half see-through (the words stay solid) // optional: the bubbles are thick discs turned around their vertical axis (left side forward); slant = most degrees (each bubble gets a random share), depth = thickness in grid cells; slant 0 = flat
+  bubble3d?: {slant: number; depth: number; engine?: "svg" | "three" | "mascot"; seeThrough?: number}; // engine "mascot": the Mirrors mascot instead of bubbles (src/MascotLayer.tsx)
+  mascot?: Record<string, number>; // optional: the mascot's settings, as "Copy settings" in the playground gives them (src/mascot/mascot.js DEFAULTS fill the rest) // engine: "svg" = classic, "three" = Real 3D (Three.js); seeThrough: 0 = solid, 0.5 = half see-through (the words stay solid) // optional: the bubbles are thick discs turned around their vertical axis (left side forward); slant = most degrees (each bubble gets a random share), depth = thickness in grid cells; slant 0 = flat
   outro?: {secondsBeforeEnd: number; text?: string}; // optional: the end bubble (center, fills the screen, three dots turn into the text, pop sound); secondsBeforeEnd 0 = off
   chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
@@ -73,7 +74,7 @@ export const BUBBLE3D = {slantMin: 0, slantMax: 45, slantStep: 0.5, defaultSlant
 export const IMPACT = {min: 0, max: 4, step: 0.05, defaultSize: 1.5, holdSeconds: 0.6, bubbleCells: 3}; // bubbleCells: the width a burst "at" a cell counts as one bubble width
 
 // The settings a profile saves and loads (everything the sliders in the editor tab change)
-export const PROFILE_KEYS = ["bubbleScale", "captionZoom", "popSound", "chain", "nameZoom", "outro", "impact", "bubble3d"] as const;
+export const PROFILE_KEYS = ["bubbleScale", "captionZoom", "popSound", "chain", "nameZoom", "outro", "impact", "bubble3d", "mascot"] as const;
 
 // Limits and start values of the outro slider (the editor tab uses the same numbers); 0 = no outro
 export const OUTRO = {min: 0, max: 5, step: 0.1, defaultSeconds: 1, defaultText: "MIRRORS"};
@@ -104,7 +105,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubble3d", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubble3d", "mascot", "bubbleScale"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -244,12 +245,15 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
     }
   }
 
+  // mascot (optional): numbers only (the playground's settings)
+  if (s.mascot !== undefined && (!isObj(s.mascot) || !Object.values(s.mascot).every(isNum))) errors.push('mascot: must be the settings from the playground, like {"size": 12.5, "sign": 5.8}');
+
   // bubble3d (optional)
   if (s.bubble3d !== undefined) {
     if (!isObj(s.bubble3d)) errors.push('bubble3d: must be an object like {"slant": 20, "depth": 0.5}');
     else {
       keys(s.bubble3d, ["slant", "depth", "engine", "seeThrough"], "bubble3d");
-      if (s.bubble3d.engine !== undefined && s.bubble3d.engine !== "svg" && s.bubble3d.engine !== "three") errors.push('bubble3d.engine: must be "svg" (classic) or "three" (Real 3D)');
+      if (s.bubble3d.engine !== undefined && !["svg", "three", "mascot"].includes(s.bubble3d.engine)) errors.push('bubble3d.engine: must be "svg" (classic), "three" (Real 3D) or "mascot"');
       if (s.bubble3d.seeThrough !== undefined) num(s.bubble3d.seeThrough, "bubble3d.seeThrough", 0, BUBBLE3D.seeThroughMax);
       num(s.bubble3d.slant, "bubble3d.slant", BUBBLE3D.slantMin, BUBBLE3D.slantMax);
       num(s.bubble3d.depth, "bubble3d.depth", BUBBLE3D.depthMin, BUBBLE3D.depthMax);

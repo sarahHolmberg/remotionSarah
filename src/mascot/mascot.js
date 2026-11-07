@@ -1,0 +1,289 @@
+// src/mascot/mascot.js
+// NEW FILE: the Mirrors mascot, in one place. Used by the Remotion "Mascot" style (src/MascotLayer.tsx) and by the
+// playground (mascot/playground.html is built from mascot/playground.src.js + this file: npm run mascot:playground).
+// Change his look, animations or choreography here and both follow.
+//
+//   const m = createMascot(THREE, settings)   settings: a live object (DEFAULTS merged with the user's); m.rebuild() after a change
+//   m.world                                   add this group to a scene; it uses pixel coordinates: x right, y down as -y, (0,0) = top left
+//   m.setSize(width, height, gridSize)        the frame size in pixels, and the grid
+//   m.setMoves([{x, y, t, text, name}], start)   the moves (cell centers in pixels, time in seconds); name = the name intro
+//   m.frame(t)                                pose everything for time t (pure: the same t always gives the same picture); returns a label
+//   m.plan, m.man, m.state(t), m.refreshText()
+
+// the settings Sarah chose (8 Nov 2026)
+export const DEFAULTS = {size: 12.5, walk: 1.4, run: 4.5, outline: 1.5, turn: 0.2, lead: 0.2, minShow: 0.85, sign: 5.8, reach: 2.4, jump: 0.8, lean: 0.3, skip: 0.9, push: 1, intro: 2.55};
+
+export function createMascot(THREE, S) {
+let W = 400, H = 711, N = 20, moves = [], start = null, plan = [], man;
+const world = new THREE.Group();
+world.add(new THREE.AmbientLight(0xffffff, Math.PI * 0.62));
+const sun = new THREE.DirectionalLight(0xffffff, Math.PI * 0.5);
+sun.position.set(300, 600, 900);
+world.add(sun);
+
+const white=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.45}),ink=new THREE.MeshBasicMaterial({color:0x000000,side:THREE.BackSide});
+
+// the mirror mascot: a gold ornate frame with lavender glass (shine stripes; the words appear on it), black outline,
+// short black arms and legs with block feet, and a hand mirror in his right hand
+const gold=new THREE.MeshStandardMaterial({color:0xe6bf86,roughness:0.5}),blackM=new THREE.MeshStandardMaterial({color:0x1d1b1e,roughness:0.6});
+function solid(geo,mat,outline=true,px=S.outline){const g=new THREE.Group(),m=new THREE.Mesh(geo,mat);g.add(m);if(outline&&px>0){const o=new THREE.Mesh(geo,ink);geo.computeBoundingSphere();o.scale.setScalar(1+px/Math.max(1,geo.boundingSphere.radius));o.position.copy(geo.boundingSphere.center).multiplyScalar(-(o.scale.x-1));g.add(o)}return g}
+function limb(len,r,mat){const pivot=new THREE.Group(),p=solid(new THREE.CapsuleGeometry(r,Math.max(0.01,len-2*r),6,12),mat);p.position.y=-len/2;pivot.add(p);const end=new THREE.Group();end.position.y=-len;pivot.add(end);return{pivot,end}}
+// the frame outline: straight sides with a small scroll, rounded shoulders, a crown point on top (units of h, y up from the frame's bottom)
+function frameShape(h,inset=0){const s=new THREE.Shape(),k=(x,y)=>[x*h,y*h],w=0.27-inset;
+  s.moveTo(...k(-w,inset));s.lineTo(...k(-w,0.40));s.lineTo(...k(-w-0.04+inset,0.44));s.lineTo(...k(-w,0.48));
+  s.quadraticCurveTo(...k(-w,0.62-inset),...k(-0.13,0.66-inset));s.lineTo(...k(-0.08,0.71-inset));s.quadraticCurveTo(...k(-0.03,0.73-inset),...k(0,0.80-inset*1.6));
+  s.quadraticCurveTo(...k(0.03,0.73-inset),...k(0.08,0.71-inset));s.lineTo(...k(0.13,0.66-inset));s.quadraticCurveTo(...k(w,0.62-inset),...k(w,0.48));
+  s.lineTo(...k(w+0.04-inset,0.44));s.lineTo(...k(w,0.40));s.lineTo(...k(w,inset));s.closePath();return s}
+function glassShape(h){const s=new THREE.Shape(),k=(x,y)=>[x*h,y*h];s.moveTo(...k(-0.17,0.14));s.lineTo(...k(-0.17,0.44));s.quadraticCurveTo(...k(-0.17,0.62),...k(0,0.65));
+  s.quadraticCurveTo(...k(0.17,0.62),...k(0.17,0.44));s.lineTo(...k(0.17,0.14));s.quadraticCurveTo(...k(0.17,0.06),...k(0,0.06));s.quadraticCurveTo(...k(-0.17,0.06),...k(-0.17,0.14));return s}
+function build(){
+  if(man){world.remove(man.root,man.portal,man.rope,man.target,...man.puffs,...man.dust,...man.lines)} // the old character, portal and puffs go before the new ones
+  const h=H*S.size/100,r=h*0.055,root=new THREE.Group(),body=new THREE.Group();root.add(body);
+  const hips=new THREE.Group();hips.position.y=h*0.22;body.add(hips);
+  const torso=new THREE.Group();hips.add(torso);
+  const depth=h*0.09,frame=solid(new THREE.ExtrudeGeometry(frameShape(h),{depth,bevelEnabled:true,bevelSize:h*0.012,bevelThickness:h*0.02,bevelSegments:3,curveSegments:16}),gold);
+  frame.position.z=-depth/2;torso.add(frame);
+  // the glass: its own canvas (stripes, and the words when he shows a move); a face cap just in front of the frame
+  const gc=document.createElement("canvas");gc.width=360;gc.height=640; /* the glass's own proportions, so the words aren't squeezed */const gtex=new THREE.CanvasTexture(gc);gtex.colorSpace=THREE.SRGBColorSpace;
+  const gGeo=new THREE.ShapeGeometry(glassShape(h),24);gGeo.computeBoundingBox();const bb=gGeo.boundingBox,uv=gGeo.attributes.uv,pos=gGeo.attributes.position;
+  for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getX(i)-bb.min.x)/(bb.max.x-bb.min.x),(pos.getY(i)-bb.min.y)/(bb.max.y-bb.min.y));
+  const glass=new THREE.Mesh(gGeo,new THREE.MeshBasicMaterial({map:gtex}));glass.position.z=depth/2+h*0.022;torso.add(glass);
+  const glassRim=new THREE.Mesh(new THREE.ShapeGeometry(glassShape(h),24),new THREE.MeshBasicMaterial({color:0x1d1b1e}));glassRim.scale.set(1.08,1.04,1);glassRim.position.set(0,-h*0.012,depth/2+h*0.018);torso.add(glassRim);
+  const mk=(x,y,l1,l2,parent)=>{const s=new THREE.Group();s.position.set(x,y,0);parent.add(s);const a=limb(l1,r,blackM),b=limb(l2,r,blackM);s.add(a.pivot);a.end.add(b.pivot);return{s,up:a.pivot,lo:b.pivot,hand:b.end,l1,l2}};
+  const armR=mk(h*0.29,h*0.38,h*0.15,h*0.13,torso),armL=mk(-h*0.29,h*0.38,h*0.15,h*0.13,torso); // R = screen right
+  const legR=mk(h*0.11,h*0.02,h*0.12,h*0.1,hips),legL=mk(-h*0.11,h*0.02,h*0.12,h*0.1,hips);
+  for(const L of [legR,legL]){const foot=solid(new THREE.BoxGeometry(h*0.16,h*0.06,h*0.11),blackM);foot.position.set(0,-h*0.015,h*0.02);L.hand.add(foot)}
+  // each hand: a black fist, and a big white glove with the index finger out (white with a thick black outline reads on any background)
+  const glovePx=S.outline+2.5;
+  for(const A of [armR,armL]){A.fist=solid(new THREE.SphereGeometry(r*1.35,14,10),blackM);A.hand.add(A.fist);
+    A.glove=new THREE.Group();const palm=solid(new THREE.SphereGeometry(r*1.7,16,12),white,true,glovePx);
+    const finger=solid(new THREE.CapsuleGeometry(r*0.8,h*0.2,6,10),white,true,glovePx);finger.position.y=-(r*1.4+h*0.1);
+    const thumb=solid(new THREE.CapsuleGeometry(r*0.5,h*0.04,5,8),white,true,glovePx);thumb.position.set(r*1.3,-r*0.6,0);thumb.rotation.z=0.9;
+    A.glove.add(palm,finger,thumb);A.glove.visible=false;A.hand.add(A.glove)}
+  // the target ring on the cell he points at: white inside a black ring, pulsing
+  const target=new THREE.Group(),tr=Math.max(W/N*0.75,h*0.14);
+  target.add(new THREE.Mesh(new THREE.TorusGeometry(tr,tr*0.22,8,40),new THREE.MeshBasicMaterial({color:0x000000})));
+  const tw=new THREE.Mesh(new THREE.TorusGeometry(tr,tr*0.11,8,40),new THREE.MeshBasicMaterial({color:0xffffff}));tw.position.z=1;target.add(tw);target.visible=false;world.add(target);
+  // the hand mirror in his right hand: handle, gold oval rim, glass
+  const hm=new THREE.Group();const handle=solid(new THREE.CapsuleGeometry(h*0.022,h*0.1,5,10),gold);handle.position.y=h*0.07;hm.add(handle);
+  const rim=solid(new THREE.TorusGeometry(h*0.075,h*0.018,10,32),gold);rim.position.y=h*0.21;rim.scale.y=1.25;hm.add(rim);
+  const hc=document.createElement("canvas");hc.width=400;hc.height=500;const htex=new THREE.CanvasTexture(hc);htex.colorSpace=THREE.SRGBColorSpace;
+  const hg=new THREE.Mesh(new THREE.CircleGeometry(h*0.07,40),new THREE.MeshBasicMaterial({map:htex}));hg.position.set(0,h*0.21,h*0.022);hg.scale.y=1.25;hm.add(hg);
+  hm.rotation.z=Math.PI;armR.hand.add(hm); /* glass beyond the fist, facing the camera; it grows into a sign when he holds it up */
+  const rope=new THREE.Mesh(new THREE.CylinderGeometry(h*0.018,h*0.018,1,8),new THREE.MeshStandardMaterial({color:0x7a5532,roughness:0.9}));rope.visible=false;world.add(rope);
+  const dust=[...Array(8)].map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(h*0.045,10,8),new THREE.MeshBasicMaterial({color:0xe3ddd2,transparent:true}));m.visible=false;world.add(m);return m});
+  const lines=[...Array(3)].map(()=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(1,h*0.018),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true}));m.visible=false;world.add(m);return m});
+  const shadow=new THREE.Mesh(new THREE.CircleGeometry(h*0.24,32),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.28}));shadow.scale.y=0.25;shadow.position.z=-h;root.add(shadow);
+  // portal ring and poof puffs
+  const portal=new THREE.Group(),ring=new THREE.Mesh(new THREE.TorusGeometry(h*0.34,h*0.035,10,48),new THREE.MeshBasicMaterial({color:0x111111}));
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(h*0.33,48),new THREE.MeshBasicMaterial({color:0xcfcfe0,transparent:true,opacity:.85}));portal.add(disc,ring);portal.scale.y=1.25;world.add(portal);
+  const puffs=[...Array(7)].map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(h*0.05,10,8),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true}));world.add(m);return m});
+  world.add(root);man={root,body,hips,torso,armR,armL,legR,legL,shadow,gc,gtex,portal,puffs,h,text:undefined,target,hm,hc,htex,signText:undefined,rope,dust,lines};drawGlass(null,0);drawSign("");
+}
+// the hand mirror's glass: lavender with a shine stripe, and the move's words big enough to read when he holds it up
+function drawSign(text){
+  if(man.signText===text)return;man.signText=text;const g=man.hc.getContext("2d"),w=400,hh=500;
+  g.fillStyle="#cbcbdd";g.fillRect(0,0,w,hh);g.save();g.translate(w/2,hh/2);g.rotate(-0.6);g.fillStyle="rgba(255,255,255,.7)";g.fillRect(-120,-400,36,800);g.restore();
+  if(text){g.fillStyle="rgba(255,255,255,.8)";g.fillRect(0,0,w,hh);g.fillStyle="#111";g.textAlign="center";g.textBaseline="middle";
+    const words=String(text).toUpperCase().split(/\s+/);let fs=120;const set=()=>g.font=`700 ${fs}px "Comic Neue",system-ui`;set();
+    while(fs>20&&(words.length*fs*1.05>hh*0.62||words.some(x=>g.measureText(x).width>w*0.62))){fs-=4;set()} // inside the oval
+    g.lineJoin="round";g.lineWidth=fs*0.11;g.strokeStyle="#111"; // a thick outline makes the letters read bolder than the font's heaviest weight
+    words.forEach((x,i)=>{const y=hh/2+(i-(words.length-1)/2)*fs*1.05;g.strokeText(x,w/2,y);g.fillText(x,w/2,y)})}
+  man.htex.needsUpdate=true;
+}
+// the glass face: lavender with two white shine stripes; with a move, its words in big black comic letters over the glass
+function drawGlass(text,k){
+  const key=text?text+"|"+(k>0.5):"";if(man.text===key)return;man.text=key;const g=man.gc.getContext("2d"),W2=360,H2=640;
+  g.fillStyle="#cbcbdd";g.fillRect(0,0,W2,H2);g.save();g.translate(W2/2,H2/2);g.rotate(-0.6);g.fillStyle="rgba(255,255,255,.75)";g.fillRect(-60,-500,46,1000);g.fillRect(20,-500,22,1000);g.restore();
+  if(text&&k>0.5){g.fillStyle="rgba(255,255,255,.82)";g.fillRect(0,0,W2,H2);g.fillStyle="#111";g.textAlign="center";g.textBaseline="middle";
+    const words=String(text).toUpperCase().split(/\s+/);let fs=130;g.font=`700 ${fs}px "Comic Neue",system-ui`;
+    while(fs>24&&(words.length*fs*1.05>H2*0.8||words.some(w=>g.measureText(w).width>W2*0.86))){fs-=6;g.font=`700 ${fs}px "Comic Neue",system-ui`}
+    words.forEach((w,i)=>g.fillText(w,W2/2,H2*0.52+(i-(words.length-1)/2)*fs*1.05))} // one word per line, like the bubbles
+  man.gtex.needsUpdate=true;
+}
+
+// ---------- choreography: where he is and what he does at time T ----------
+// moves: [{t, x, y, text}] in time order. For each move he arrives "lead" seconds early, points, and the paper is up at t.
+// Between moves he picks how to travel from the time he has: walk, run (with a slide if it's tight), portal, or poof.
+function makePlan(moves,start,startT=0){
+  const h=man.h,out=[];let pos=start??null;
+  // moves that come sooner than "Same spot if closer than" after the move before them share one stop: he stays put,
+  // the words change on the sign at each move's time, and he points at each move's cell in turn
+  const stops=[];moves.forEach(m=>{const g=stops[stops.length-1];if(g&&m.t-g[g.length-1].t<S.skip)g.push(m);else stops.push([m])});
+  stops.map(items=>({t:items[0].t,text:items[0].text,x:items.reduce((a,b)=>a+b.x,0)/items.length,y:items.reduce((a,b)=>a+b.y,0)/items.length,items})).forEach((m,i)=>{
+    if(i===0&&m.items[0].name&&!start){
+      // the name intro: he's close to the camera (big, low in the corner away from the dancer, feet below the frame),
+      // points at the dancer and holds the name up on the mirror, about half the screen
+      const B=S.intro,hB=h*B,n0=m.items[0],side=n0.x<W/2?1:-1;
+      const edgeB=hB*0.29+hB*0.115*S.sign+10; // far enough in that the whole name sign fits above him
+      out.push({...m,x:n0.x,y:n0.y,items:[n0],side,stand:{x:side>0?W-edgeB:edgeB,y:H+hB*0.12},arrive:m.t-S.lead,travel:null,scale:B,intro:true});
+      pos=out[0].stand;
+      if(m.items.length<2)return;
+      const rest=m.items.slice(1);m={t:rest[0].t,text:rest[0].text,x:rest.reduce((a,b)=>a+b.x,0)/rest.length,y:rest.reduce((a,b)=>a+b.y,0)/rest.length,items:rest}; // moves right after the name: their own stop
+    }
+    // where he stands. m.x/m.y is the middle of the stop's cells. Close by for a quick single move; the longer the stop
+    // (and always for a stop with several cells) the further he moves out toward the nearest frame edge (bottom, left or right),
+    // so he doesn't cover the dancers. He points inward, the sign goes out toward the edge, and the whole sign fits in the frame.
+    const L=h*(0.28*S.reach+0.24*S.sign),halfW=h*0.115*S.sign,halfH=halfW*1.25,edge=h*0.29+halfW+10;
+    const stay=m.items.at(-1).t-m.t+S.minShow,push=S.push*Math.min(1,m.items.length>1?0.75+stay*0.2:Math.max(0,(stay-0.6)/1.2));
+    const toL=m.x,toR=W-m.x,toB=H-m.y,nearest=toB<Math.min(toL,toR)?"bottom":toL<toR?"left":"right";
+    const side=nearest==="left"?-1:nearest==="right"?1:m.x<W/2?-1:1;
+    const nearX=m.x+side*h*0.75,edgeX=nearest==="left"?edge:nearest==="right"?W-edge:m.x,nearY=m.y+h*0.3,edgeY=nearest==="bottom"?H-6:nearY;
+    const sx=Math.min(W-edge,Math.max(edge,nearX+(edgeX-nearX)*push)),holdX=sx+side*h*0.29;
+    const alpha=Math.min(1.45,Math.max(0.03,Math.asin(Math.max(0,Math.min(1,((side<0?holdX:W-holdX)-halfW-4)/L))))); // same tilt the sign gets when he stands there
+    const stand={x:sx,y:Math.min(H-4,Math.max(h*0.6+L*Math.cos(alpha)+halfH+6,nearY+(edgeY-nearY)*push))};
+    const arrive=m.t-S.lead;let travel=null;
+    if(pos){const prevEnd=out.length?out[out.length-1].items.at(-1).t+S.minShow:startT;const gap=Math.max(0,arrive-prevEnd),d=Math.hypot(stand.x-pos.x,stand.y-pos.y)/h;
+      // the direction picks the way: (almost) straight down = rope, down at an angle = slide, otherwise walk or run;
+      // short trips that aren't a drop or a slide = a jump; no teleporting: when time is short he just goes faster
+      const dxp=stand.x-pos.x,dyp=stand.y-pos.y,down=dyp>0&&d>0.5,vertical=down&&Math.abs(dxp)<=dyp*0.21,diagonal=down&&!vertical&&dyp>=Math.abs(dxp)*0.35;
+      let mode,dur;
+      const fit=(ideal,min)=>Math.max(min,Math.min(ideal,gap)); // the natural duration, squeezed into the time there is
+      if(out.length&&out[out.length-1].intro){mode="runback";dur=Math.min(1.0,Math.max(0.5,gap))}
+      else if(d<0.05){mode="stay";dur=0}
+      else if(vertical){mode="rope";dur=fit(Math.max(0.7,d/(S.run*1.3)),0.35)}
+      else if(diagonal){mode="slide";dur=fit(Math.max(0.4,d/(S.run*1.15)),0.25)}
+      else if(d<=S.jump){mode="jump";dur=fit(0.7,0.3)}
+      else if(d/S.walk<=gap){mode="walk";dur=d/S.walk}
+      else{mode="run";dur=fit(d/S.run,0.25)}
+      travel={mode,from:pos,to:stand,t0:arrive-dur,t1:arrive,slide:mode==="run"&&d/dur>S.run*0.6,fromScale:out.length&&out[out.length-1].intro?S.intro:1}}
+    out.push({...m,side,stand,arrive,travel});pos=stand;
+  });
+  return out;
+}
+const ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2,clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x)),back=x=>{const c=1.7;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)};
+function state(T){
+  if(!plan.length)return null;
+  let i=plan.findIndex((m,k)=>T<(plan[k+1]?.travel?.t0??Infinity));if(i<0)i=plan.length-1;
+  const m=plan[i],tr=m.travel;
+  if(tr&&T<tr.t1&&T>=tr.t0)return{kind:"travel",m,tr,u:(T-tr.t0)/(tr.t1-tr.t0||1)};
+  if(i===0&&!tr&&T<m.arrive-0.6)return{kind:"before",m};
+  if(i===0&&!tr&&T<m.arrive)return{kind:"enter",m,u:(T-(m.arrive-0.6))/0.6};
+  return{kind:"stand",m,T};
+}
+
+// ---------- poses ----------
+function pose(p){
+  const {armR,armL,legR,legL,torso,body}=man;
+  legR.up.rotation.set(p.lr||0,0,0);legL.up.rotation.set(p.ll||0,0,0);legR.lo.rotation.set(p.klr||0,0,0);legL.lo.rotation.set(p.kll||0,0,0);
+  armR.up.rotation.set(p.ar||0,0,p.arz||0.12);armL.up.rotation.set(p.al||0,0,p.alz||-0.12);armR.lo.rotation.set(p.er||0,0,0);armL.lo.rotation.set(p.el||0,0,0);
+  torso.rotation.set(p.lean||0,0,p.tilt||0);body.position.y=p.bob||0;
+  const ha=man.hm.parent===armR.hand?armR:armL;man.hm.rotation.z=-(ha.up.rotation.z+torso.rotation.z); // the hand mirror stays upright whatever the arm and body do
+  for(const A of [armR,armL]){const pt=A===p.pointWith;A.glove.visible=pt;A.fist.visible=!pt} // the pointing hand opens into the glove
+}
+function frame(T){
+  const st=state(T),h=man.h,R=man.root;man.portal.visible=false;man.rope.visible=false;man.target.visible=false;[...man.puffs,...man.dust,...man.lines].forEach(m=>m.visible=false);
+  man.hm.scale.setScalar(1);man.hm.rotation.y=0;holdIn(man.armR);setReach(man.armR,1);setReach(man.armL,1);
+  if(!st){R.visible=false;return "Click the stage, or press Demo."}
+  R.visible=true;R.scale.setScalar(1);let label="";
+  const place=(x,y)=>{R.position.set(x,-y,0)};
+  const showPortal=(x,y,s)=>{man.portal.visible=s>0.01;man.portal.position.set(x,-(y-h*0.45),-5);man.portal.scale.set(s,s*1.25,s);man.portal.children[0].rotation.z=T*6};
+  if(st.kind==="before"){R.visible=false;return "Waiting for the first move"}
+  if(st.kind==="enter"&&st.m.intro){ // pops up close to the camera
+    const s=st.m.stand;place(s.x,s.y);R.rotation.y=-st.m.side*S.turn;R.scale.setScalar(Math.max(0.01,S.intro*back(st.u)));pose({});return "Intro (close up)"}
+  if(st.kind==="enter"){ // drops in from above the frame and lands with a squash
+    const u=st.u,s=st.m.stand,fall=s.y+h*1.3;R.rotation.y=0;
+    if(u<0.7){const k=u/0.7;place(s.x,s.y-fall*(1-k*k));pose({arz:2.6,alz:-2.6,kll:0.3,klr:0.3})}
+    else{const k=(u-0.7)/0.3;place(s.x,s.y);pose({arz:2.6*(1-k),alz:-2.6*(1-k),kll:1.1*(1-k),klr:1.1*(1-k),bob:-h*0.08*(1-k)})}
+    return "Entrance (drop in)"}
+  if(st.kind==="travel"){
+    const {tr,u}=st,dir=Math.sign(tr.to.x-tr.from.x)||1;
+    drawSign(st.m.text); // the words go on the sign while he travels, so it shows them the moment he lands
+    const pathAt=v=>{const e=tr.mode==="walk"?v:tr.mode==="slide"?1-Math.pow(1-v,2):ease(v);return{x:tr.from.x+(tr.to.x-tr.from.x)*e,y:tr.from.y+(tr.to.y-tr.from.y)*e}};
+    const trail=(n,spread)=>{const dur=tr.t1-tr.t0;man.dust.forEach((m,j)=>{if(j>=n)return;const v=u-(j*0.05)/dur;if(v<0)return;const q=pathAt(v);m.visible=true;
+      m.position.set(q.x+Math.sin(j*2.1)*h*0.05*spread,-(q.y-h*0.03)+j*h*0.012,6);m.scale.setScalar(0.6+j*0.18*spread);m.material.opacity=0.55*(1-j/n)})};
+    const speedLines=(vx,vy)=>{const len=Math.hypot(vx,vy)||1;man.lines.forEach((m,j)=>{m.visible=true;const L=h*(0.35+0.15*j);m.scale.x=L;
+      m.position.set(R.position.x-vx/len*(h*0.35+L/2),R.position.y+vy/len*(h*0.35+L/2)+h*(0.3+0.2*j),8);m.rotation.z=Math.atan2(-vy,vx);m.material.opacity=0.45-j*0.1})};
+    if(tr.mode==="runback"){ // from the close-up he runs back into the scene: smaller and smaller until his normal size at the first spot
+      const e=ease(u),x=tr.from.x+(tr.to.x-tr.from.x)*e,y=tr.from.y+(tr.to.y-tr.from.y)*e;place(x,y);R.scale.setScalar(Math.pow(tr.fromScale,1-e));
+      R.rotation.y=dir*0.6;const ph=u*(tr.t1-tr.t0)*14;
+      pose({ll:0.9*Math.sin(ph),lr:-0.9*Math.sin(ph),kll:0.5+0.5*Math.sin(ph+1.6),klr:0.5+0.5*Math.sin(ph+1.6+Math.PI),al:-0.7*Math.sin(ph),ar:0.7*Math.sin(ph),er:-0.6,el:-0.6,lean:0.3,bob:Math.abs(Math.sin(ph))*h*0.05});
+      trail(5,1.2);return "Run back from the intro"}
+    if(tr.mode==="rope"){
+      // a rope drops in where he lands; he hops on, slides down and jumps off onto the spot
+      const top=Math.min(tr.from.y,tr.to.y)-h*1.15,bottom=tr.to.y-h*0.25,ropeIn=clamp(u/0.12);
+      man.rope.visible=true;const len=(bottom-top)*ropeIn;man.rope.scale.y=Math.max(1,len);man.rope.position.set(tr.to.x+h*0.02,-(top+len/2),-2);
+      R.rotation.y=0;let x,y;
+      if(u<0.2){const k=u/0.2;x=tr.from.x+(tr.to.x-tr.from.x)*ease(k);y=tr.from.y-Math.sin(Math.PI*k)*h*0.3-k*h*0.15;pose({arz:2.6*k,alz:-2.6*k,kll:0.6,klr:0.6})}
+      else if(u<0.85){const k=(u-0.2)/0.65;x=tr.to.x;y=tr.from.y-h*0.15+(tr.to.y-tr.from.y)*Math.pow(k,1.6);pose({arz:2.8,alz:-2.8,ll:0.15,lr:-0.15,kll:0.4,klr:0.4})}
+      else{const k=(u-0.85)/0.15;x=tr.to.x;y=tr.to.y-h*0.15*(1-k)-Math.sin(Math.PI*k)*h*0.08;pose({arz:2.8*(1-k),alz:-2.8*(1-k),kll:0.8*k,klr:0.8*k,bob:-h*0.04*k})}
+      place(x,y);speedLines(0,-1);return "Rope slide";
+    }
+    if(tr.mode==="jump"){ // crouch, jump in an arc, land with a squash
+      R.rotation.y=dir*0.5;const dd=Math.hypot(tr.to.x-tr.from.x,tr.to.y-tr.from.y)/h,hgt=h*Math.max(0.45,dd*0.3);
+      if(u<0.25){const k=u/0.25;place(tr.from.x,tr.from.y);pose({kll:1.2*k,klr:1.2*k,ll:-0.5*k,lr:-0.5*k,lean:0.25*k,arz:-0.6*k+0.12,alz:0.6*k-0.12,bob:-h*0.1*k});return "Jump (crouch)"}
+      if(u<0.85){const k=(u-0.25)/0.6,x=tr.from.x+(tr.to.x-tr.from.x)*k,y=tr.from.y+(tr.to.y-tr.from.y)*k-Math.sin(Math.PI*k)*hgt;place(x,y);
+        pose({kll:0.9,klr:0.6,ll:-0.6,lr:0.3,arz:2.5,alz:-2.5});speedLines(tr.to.x-tr.from.x,tr.to.y-tr.from.y);return "Jump"}
+      const k=(u-0.85)/0.15;place(tr.to.x,tr.to.y);pose({kll:1.1*(1-k),klr:1.1*(1-k),ll:-0.5*(1-k),lr:-0.5*(1-k),bob:-h*0.09*(1-k),arz:1.2*(1-k),alz:-1.2*(1-k)});trail(4,1.2);return "Jump (land)"}
+    const q=pathAt(u);place(q.x,q.y);
+    R.rotation.y=dir*0.7; /* turned enough to move sideways, not so far that the mirror becomes a thin line */
+    if(tr.mode==="slide"){pose({lean:-0.45,ll:-1.25,lr:0.25,kll:0.1,klr:1.1,arz:1.4,alz:-1.4,al:0.4,ar:0.4,bob:-h*0.09});trail(8,1.6);speedLines(tr.to.x-tr.from.x,tr.to.y-tr.from.y);return "Slide (diagonal)"}
+    const dist=Math.hypot(q.x-tr.from.x,q.y-tr.from.y)/h,stride=tr.mode==="run"?0.9:0.55,ph=dist/stride*Math.PI*2,amp=tr.mode==="run"?0.95:0.45;
+    if(tr.slide&&u>0.78){pose({lean:-0.35,ll:-1.1,lr:0.35,klr:0.9,arz:1.1,alz:-1.1,bob:-h*0.04});trail(8,1.4);return "Run → slide stop"}
+    pose({ll:amp*Math.sin(ph),lr:-amp*Math.sin(ph),kll:0.5+0.5*Math.sin(ph+1.6),klr:0.5+0.5*Math.sin(ph+1.6+Math.PI),al:-amp*0.8*Math.sin(ph),ar:amp*0.8*Math.sin(ph),er:-0.6,el:-0.6,lean:tr.mode==="run"?0.28:0.06,bob:Math.abs(Math.sin(ph))*h*(tr.mode==="run"?0.05:0.02)});
+    if(tr.mode==="run"){trail(6,1);speedLines(tr.to.x-tr.from.x,tr.to.y-tr.from.y)}
+    return tr.mode==="run"?"Run":"Walk";
+  }
+  // standing at the move: point at the cell with one hand and hold the sign up with the other, right as he lands
+  const m=st.m,s=m.stand,B=m.scale||1,hS=h*B;place(s.x,s.y);R.rotation.y=-m.side*S.turn;R.scale.setScalar(B);
+  // which word of this stop is up now: each one takes over at its own time (a hair early so it's readable on the beat)
+  let ci=0;m.items.forEach((x,j)=>{if(T>=x.t-0.05)ci=j});const it=m.items[ci],prev=m.items[Math.max(0,ci-1)],sw=ci?clamp((T-(it.t-0.05))/0.15):1;
+  // the sign is always in the hand on the frame-edge side (m.side); the other hand points, across his body if it has to
+  const out=m.side,ptRight=out<0,up=clamp((T-m.arrive)/0.15),shX=s.x+(ptRight?1:-1)*hS*0.29*Math.cos(R.rotation.y),shY=s.y-hS*0.6;
+  const next=plan[plan.indexOf(m)+1],leave=next?.travel?.t0??Infinity,k=Math.min(up,clamp((leave-T)/0.15));
+  const cx=prev.x+(it.x-prev.x)*ease(sw),cy=prev.y+(it.y-prev.y)*ease(sw); // the hand swings from the last cell to the new one
+  const tilt=(cx>s.x?-1:1)*S.lean*up,phi=(Math.atan2(cx-shX,-(shY-cy))-tilt)*up; // leans toward the cell; the arm angle is measured from the leaning body
+  const hold=ptRight?man.armL:man.armR;holdIn(hold);drawSign(it.text);
+  // the sign goes out toward the frame edge: as far sideways as there's room for it, tilting up when the edge is close
+  const reach=1+(S.reach-1)*k,sc=1+(S.sign-1)*k,L=hS*(0.28*reach+0.24*sc),halfW=hS*0.115*sc,holdX=s.x+out*hS*0.29;
+  const room=(out<0?holdX:W-holdX)-halfW-8,alpha=m.intro?0.12:Math.min(1.45,Math.max(0.03,Math.asin(Math.max(0,Math.min(1,room/L))))); // alpha: 0 = straight up, 1.57 = straight out; the intro holds the name straight up
+  setReach(hold,reach);const holdZ=(Math.PI-alpha)*k;
+  pose({bob:Math.sin(T*3)*h*0.008,tilt,lean:0.12*up,pointWith:up>0.3?(ptRight?man.armR:man.armL):null,...(ptRight?{arz:phi,alz:-holdZ-tilt}:{alz:phi,arz:holdZ-tilt})});
+  if(k>0.05){man.target.visible=true;man.target.position.set(it.x,-it.y,40);man.target.scale.setScalar((0.6+0.4*back(ci?sw:up))*(1+0.1*Math.sin(T*8)))}
+  const pop=back(k),bump=ci?1+0.07*Math.sin(Math.PI*clamp((T-(it.t-0.05))/0.25)):1; // a little bump when the words change
+  man.hm.scale.setScalar(Math.max(1,1+(S.sign-1)*pop)*bump);man.hm.rotation.y=-R.rotation.y; // grows into a readable sign, facing you
+  if(m.intro)return "Intro: name close up";
+  return m.items.length>1?`Point + sign (${ci+1}/${m.items.length}, same spot)`:"Point + sign";
+}
+// stretch an arm (f = 1 normal): the upper and lower arm get longer, the hand moves out with them
+function setReach(arm,f){for(const [seg,L] of [[arm.up,arm.l1],[arm.lo,arm.l2]]){const p=seg.children[0],end=seg.children[1];p.scale.y=f;p.position.y=-L*f/2;end.position.y=-L*f}}
+// the hand mirror goes to whichever hand isn't pointing
+function holdIn(arm){if(man.hm.parent!==arm.hand)arm.hand.add(man.hm)}
+
+const replan = () => {
+  if (man) plan = makePlan(moves, start, 0);
+};
+return {
+  world,
+  setSize(w, h, n) {
+    W = w;
+    H = h;
+    N = n;
+    build();
+    replan();
+  },
+  rebuild() {
+    build();
+    replan();
+  },
+  setMoves(list, from = null) {
+    moves = list;
+    start = from;
+    replan();
+  },
+  frame,
+  state: (t) => state(t),
+  get plan() {
+    return plan;
+  },
+  get man() {
+    return man;
+  },
+  refreshText() {
+    if (man) {
+      man.text = null;
+      man.signText = undefined;
+    }
+  },
+};
+}

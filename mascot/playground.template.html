@@ -1,0 +1,72 @@
+<title>Mascot Playground</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* layout: stage (video + grid + 3D mascot) on the left, control panel on the right; stacked on a phone */
+:root{--bg:#eef0f4;--panel:#ffffff;--fg:#1b1e27;--muted:#5d6475;--line:#d5d9e2;--accent:#3d5afe;--stage:#14161c;
+--display:"Bricolage Grotesque",system-ui,sans-serif;--body:system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101217;--panel:#181b22;--fg:#e9ebf1;--muted:#9aa1b2;--line:#2b303b;--accent:#7b8cff;--stage:#05060a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#101217;--panel:#181b22;--fg:#e9ebf1;--muted:#9aa1b2;--line:#2b303b;--accent:#7b8cff;--stage:#05060a;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px}
+h1{font-family:var(--display);font-weight:700;font-size:1.4rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 14px;max-width:70ch}
+.wrap{display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:900px){.wrap{grid-template-columns:minmax(0,1fr) 340px;align-items:start}}
+.stage{position:relative;background:var(--stage);border-radius:10px;overflow:hidden;margin:0 auto;max-width:100%;touch-action:manipulation;cursor:crosshair}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.stage video{object-fit:fill}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel h2{font-family:var(--display);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:4px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,label.btn{font:inherit;font-size:.85rem;padding:7px 11px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}
+button:hover,label.btn:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.sl{display:grid;grid-template-columns:96px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:.85rem}
+.sl output{font-variant-numeric:tabular-nums;color:var(--muted);text-align:right}
+textarea,input[type=text]{width:100%;font:12px/1.4 ui-monospace,Menlo,monospace;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:8px;box-sizing:border-box}
+textarea{min-height:90px;resize:vertical}
+.status{font-size:.8rem;color:var(--muted);min-height:1.2em}
+.legend{font-size:.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px}
+.legend b{color:var(--fg);font-weight:600}
+</style>
+
+<h1>Mascot Playground</h1>
+<p class="sub">The Mirrors mascot. Click the stage to send him there. Load your dance video and paste a comic JSON to watch him perform the whole choreography against your real timings. Nothing is uploaded: the video stays in your browser.</p>
+<div class="wrap">
+  <div><div class="stage" id="stage"><video id="vid" playsinline muted></video><canvas id="grid"></canvas><canvas id="gl"></canvas></div>
+    <div class="status" style="margin-top:8px"><span id="clock"></span> <span id="status"></span></div>
+    <div class="legend" id="legend"></div></div>
+  <div class="panel">
+    <h2>Play</h2>
+    <div class="row">
+      <button class="primary" id="demo">Demo choreography</button>
+      <button id="play">Pause</button><button id="restart">Restart</button>
+    </div>
+    <div class="row">
+      <label class="btn">Load video<input type="file" id="file" accept="video/*" hidden></label>
+      <label class="row" style="gap:6px;font-size:.85rem"><input type="checkbox" id="showGrid" checked> Grid</label>
+    </div>
+    <h2>Your JSON</h2>
+    <textarea id="json" placeholder='Paste a comic JSON (the one from the editor), then "Use JSON".'></textarea>
+    <div class="row"><button id="useJson">Use JSON</button></div>
+    <h2>Click-to-send words</h2>
+    <input type="text" id="clickText" value="Here!">
+    <h2>Tune</h2>
+    <div id="sliders"></div>
+    <div class="row"><button id="copy">Copy settings</button></div>
+    <textarea id="copyOut" hidden readonly></textarea>
+  </div>
+</div>
+
+<script>
+// the fonts are added from script, so a slow or blocked font file can never hold back the page (a stylesheet link in the page would)
+{const l=document.createElement("link");l.rel="stylesheet";l.href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap";document.head.appendChild(l)}
+// any error is written on the page, so a blank stage always says why
+const showErr=m=>{const s=document.getElementById("status");if(s)s.textContent="Problem: "+m};
+window.addEventListener("error",e=>showErr(e.message||"a script did not load"),true);
+window.addEventListener("unhandledrejection",e=>showErr(String(e.reason&&e.reason.message||e.reason)));
+setTimeout(()=>{if(!window.__mascotRunning)showErr("the 3D library did not start (check your connection, then reload)")},8000);
+</script>
+<script type="module">
+/*SCRIPT*/
+</script>

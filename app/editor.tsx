@@ -8,6 +8,7 @@ import {applyDefaults, BUBBLE3D, BUBBLE_SCALE, CAPTION_ZOOM, CHAIN, IMPACT, NAME
 import {CHANNEL, DEFAULT_TEXT, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {VersionTag} from "./version";
 import {Boundary, Preview} from "./previewPanel";
+import {DEFAULTS as MASCOT_DEFAULTS} from "../src/mascot/mascot";
 
 console.log("[Editor] 1. file loaded");
 
@@ -183,7 +184,7 @@ const Editor = () => {
   const setNameZoom = (percent: number) => obj && eff && save({...obj, nameZoom: {...eff.nameZoom!, percent}});
   const setOutro = (secondsBeforeEnd: number) => obj && eff && save({...obj, outro: {...eff.outro!, secondsBeforeEnd}});
   const setImpact = (size: number) => obj && eff && save({...obj, impact: {...eff.impact!, size}});
-  const set3d = (patch: {slant?: number; depth?: number; engine?: "svg" | "three"; seeThrough?: number}) => obj && eff && save({...obj, bubble3d: {...eff.bubble3d!, ...patch}});
+  const set3d = (patch: {slant?: number; depth?: number; engine?: "svg" | "three" | "mascot"; seeThrough?: number}) => obj && eff && save({...obj, bubble3d: {...eff.bubble3d!, ...patch}});
   // tail length = style.tail.maxLengthCells: how close a bubble sits to the cell its tail points at
   const tailCells: number = obj?.style?.tail?.maxLengthCells ?? TAIL.defaultCells;
   const setTail = (v: number) => obj?.style?.tail && save({...obj, style: {...obj.style, tail: {...obj.style.tail, maxLengthCells: v}}});
@@ -365,11 +366,33 @@ const Editor = () => {
                 <Slider label="Normal bubbles" value={scaleOf("normal")} min={BUBBLE_SCALE.min} max={BUBBLE_SCALE.max} step={BUBBLE_SCALE.step} show={(v) => `x${v.toFixed(2)}`} onChange={(v) => setScale("normal", v)} disabled={!obj} />
                 <div className="row" style={{flexWrap: "nowrap"}}>
                   <span style={{width: 104, flex: "none"}}>Bubble style</span>
-                  <select className="file" value={eff?.bubble3d?.engine ?? "svg"} disabled={!obj} onChange={(e) => set3d({engine: e.target.value as "svg" | "three"})}>
+                  <select className="file" value={eff?.bubble3d?.engine ?? "svg"} disabled={!obj} onChange={(e) => set3d({engine: e.target.value as "svg" | "three" | "mascot"})}>
                     <option value="svg">Classic</option>
                     <option value="three">Real 3D (rounded, lit)</option>
+                    <option value="mascot">Mascot (the Mirrors guy)</option>
                   </select>
                 </div>
+                {eff?.bubble3d?.engine === "mascot" && (
+                  <>
+                    <textarea
+                      className="code"
+                      key={JSON.stringify(obj?.mascot ?? null)}
+                      defaultValue={JSON.stringify(obj?.mascot ?? MASCOT_DEFAULTS)}
+                      onBlur={(e) => {
+                        try {
+                          const m = JSON.parse(e.target.value);
+                          if (!m || typeof m !== "object" || !Object.values(m).every((v) => typeof v === "number")) throw new Error("numbers only");
+                          obj && save({...obj, mascot: m});
+                        } catch {
+                          e.target.style.borderColor = "#d9382a";
+                        }
+                      }}
+                      spellCheck={false}
+                      style={{minHeight: 70, height: 70, fontSize: 12, resize: "vertical"}}
+                    />
+                    <span className="hint">Mascot settings: paste what "Copy settings" in the mascot playground gives you, then click outside the box.</span>
+                  </>
+                )}
                 <Slider label="See-through" value={eff?.bubble3d?.seeThrough ?? BUBBLE3D.defaultSeeThrough} min={0} max={BUBBLE3D.seeThroughMax} step={0.01} show={(v) => `${Math.round(v * 100)}%`} onChange={(v) => set3d({seeThrough: v})} disabled={!obj} />
                 <Slider label="3D turn" value={eff?.bubble3d?.slant ?? BUBBLE3D.defaultSlant} min={BUBBLE3D.slantMin} max={BUBBLE3D.slantMax} step={BUBBLE3D.slantStep} show={(v) => (v > 0 ? `${v.toFixed(1)}°` : "flat")} onChange={(v) => set3d({slant: v})} disabled={!obj} />
                 <Slider label="3D depth" value={eff?.bubble3d?.depth ?? BUBBLE3D.defaultDepth} min={BUBBLE3D.depthMin} max={BUBBLE3D.depthMax} step={BUBBLE3D.depthStep} show={(v) => v.toFixed(2)} onChange={(v) => set3d({depth: v})} disabled={!obj} />

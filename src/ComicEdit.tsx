@@ -8,6 +8,7 @@ import {cellRect} from "./gridCell";
 import {blobsAt, chainGroups, chainSchedule, type ChainBlob} from "./bubbleTimeline";
 import {BUBBLE3D, IMPACT, type Caption, type Spec} from "./spec";
 import {Bubbles3DLayer, type Bubble3D, type Tail3D} from "./Bubbles3D";
+import {MascotLayer} from "./MascotLayer";
 
 const {fontFamily} = loadFont("normal", {weights: ["700"]});
 const ADV = 0.66; // average capital-letter width as a fraction of font size (only sizes the bubble)
@@ -120,6 +121,12 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
   const depthCells = spec.bubble3d?.depth ?? BUBBLE3D.defaultDepth;
   const eye = width * PERSPECTIVE;
   const real3d = spec.bubble3d?.engine === "three"; // "Real 3D" style (src/Bubbles3D.tsx); otherwise the classic SVG bubbles
+  const mascotMode = spec.bubble3d?.engine === "mascot"; // the Mirrors mascot instead of bubbles (src/MascotLayer.tsx)
+  // his moves: each caption's first cell (in pixels), its time and words; caption 1 is the name (his close-up intro)
+  const mascotMoves = useMemo(
+    () => (mascotMode ? captions.map((c) => {const r = cellRect(c.cells[0], width, height, N);return {x: r.cx, y: r.cy, t: c.from, text: c.text, name: c.id === NAME_BUBBLE_ID};}) : []),
+    [mascotMode, captions, width, height, N]
+  );
   const seeThrough = spec.bubble3d?.seeThrough ?? BUBBLE3D.defaultSeeThrough; // the bubbles, not their words
   if (frame === 0) console.log(`[Comic] chain: ${chainWindow ? `window ${chainWindow}s, groups ${groups.map((g) => g.map((k) => captions[k].id).join("+")).join(" | ")}` : "off"}`);
   const pictureUrl = spec.pictureSrc ?? (spec.picture ? staticFile(spec.picture.file) : undefined);
@@ -577,9 +584,9 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
       </AbsoluteFill>
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
-        {impactLayer()}
+        {!mascotMode && impactLayer()}
         {impactAtLayer()}
-        {blobs.length > 0 && (
+        {!mascotMode && blobs.length > 0 && (
           <g opacity={1 - seeThrough}>
             {/* links first, so the bubbles sit on top of them; the ink pass first, so the fill pass hides the outline where a link enters a bubble.
                 Real 3D: only the links and the travelling ball are drawn here, the bubbles are in the 3D layer below */}
@@ -588,12 +595,13 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           </g>
         )}
       </svg>
+      {mascotMode && <MascotLayer moves={mascotMoves} settings={spec.mascot} width={width} height={height} grid={N} t={t} />}
       {real3d && bubbles3d.length > 0 && <Bubbles3DLayer bubbles={bubbles3d} width={width} height={height} fill={style.fill} ink={style.ink} outline={lw} opacity={1 - seeThrough} />}
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
-        {pictureLayer()}
+        {!mascotMode && pictureLayer()}
 
-        {captions.map((cap, k) => {
+        {!mascotMode && captions.map((cap, k) => {
           const out = sch[k].out;
           if (t < cap.from || t >= out) return null;
           const span = Math.max(cap.to - cap.from, 0.05);
