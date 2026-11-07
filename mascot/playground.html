@@ -1,6 +1,5 @@
 <title>Mascot Playground</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap">
 <style>
 /* layout: stage (video + grid + 3D mascot) on the left, control panel on the right; stacked on a phone */
 :root{--bg:#eef0f4;--panel:#ffffff;--fg:#1b1e27;--muted:#5d6475;--line:#d5d9e2;--accent:#3d5afe;--stage:#14161c;
@@ -60,6 +59,8 @@ textarea{min-height:90px;resize:vertical}
 </div>
 
 <script>
+// the fonts are added from script, so a slow or blocked font file can never hold back the page (a stylesheet link in the page would)
+{const l=document.createElement("link");l.rel="stylesheet";l.href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap";document.head.appendChild(l)}
 // any error is written on the page, so a blank stage always says why
 const showErr=m=>{const s=document.getElementById("status");if(s)s.textContent="Problem: "+m};
 window.addEventListener("error",e=>showErr(e.message||"a script did not load"),true);
@@ -354,7 +355,8 @@ function legend(){document.getElementById("legend").innerHTML=plan.filter(m=>m.t
 window.addEventListener("resize",layout);
 
 build();layout();demo();
-await document.fonts.load('700 40px "Comic Neue"').catch(()=>{});man.text=null;
+// start right away; the sign switches to the comic font when it has loaded (a slow or blocked font never stops the animation)
+document.fonts.load('700 40px "Comic Neue"').then(()=>{man.text=null;man.signText=undefined}).catch(()=>{});
 window.__mascotRunning=true;
 function loop(){let T=now();if(!useVideo&&loopEnd&&T>loopEnd){restart();T=0}const lab=frame(T);
   document.getElementById("clock").textContent=`${T.toFixed(2)} s · ${lab} ·`;renderer.render(scene,cam);requestAnimationFrame(loop)}
