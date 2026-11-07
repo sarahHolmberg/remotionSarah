@@ -351,8 +351,8 @@ export const Preview = ({embedded = false}: {embedded?: boolean}) => {
       ) : (
         <span style={{fontSize: 13, color: "#ff7a7a"}}>The JSON can't be read right now, so the bubbles can't be edited here.</span>
       )}
-      <PostToInstagram exported={exported} seconds={m.seconds} />
-      {exported && <SendToBuffer />}
+      <PostToInstagram exported={exported} seconds={m.seconds} startCaption={raw?.caption} />
+      {exported && <SendToBuffer startCaption={raw?.caption} />}
       {renderLog.length > 0 && (
         <pre style={{margin: 0, maxWidth: "90vw", maxHeight: 160, overflow: "auto", fontSize: 11, background: "#1e1830", padding: 8}}>{renderLog.join("\n")}</pre>
       )}

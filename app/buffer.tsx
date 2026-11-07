@@ -19,10 +19,11 @@ const json = async (r: Response) => {
   }
 };
 
-export const SendToBuffer = () => {
+export const SendToBuffer = ({startCaption}: {startCaption?: string}) => {
   const [channels, setChannels] = useState<Channel[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [text, setText] = useState("");
+  useEffect(() => void (startCaption && setText(startCaption)), [startCaption]); // the JSON's "caption" fills the box
   const [when, setWhen] = useState<When>("queue");
   const [at, setAt] = useState("");
   const [busy, setBusy] = useState(false);

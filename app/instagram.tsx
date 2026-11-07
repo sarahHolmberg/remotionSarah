@@ -20,10 +20,11 @@ const json = async (r: Response) => {
 };
 const list = (s: string) => s.split(/[\s,]+/).filter(Boolean);
 
-export const PostToInstagram = ({exported, seconds}: {exported: boolean; seconds: number}) => {
+export const PostToInstagram = ({exported, seconds, startCaption}: {exported: boolean; seconds: number; startCaption?: string}) => {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [type, setType] = useState<"REELS" | "STORIES">("REELS");
   const [caption, setCaption] = useState("");
+  useEffect(() => void (startCaption && setCaption(startCaption)), [startCaption]); // the JSON's "caption" fills the box
   const [tags, setTags] = useState("");
   const [collabs, setCollabs] = useState("");
   const [cover, setCover] = useState(0);

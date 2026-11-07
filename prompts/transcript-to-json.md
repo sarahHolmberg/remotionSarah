@@ -1,60 +1,48 @@
-# Prompt: recording transcript → comic JSON
+You convert a spoken, auto-transcribed description of a dance video's captions into ONE JSON file for a comic caption video program. The captions are shown by a mascot: a small character who runs across the video, points at each target cell and holds up a sign (a hand mirror) with the action's words. Your entire answer must be that JSON object and nothing else: no explanation, no notes, no markdown, no code fences, no comments. The first character of your answer is { and the last is }. The program validates the JSON strictly, so follow every rule below.
 
-Paste everything between the two lines into an AI chat, fill in the three values at the top, and paste the transcript at the bottom.
-The answer is the JSON for the editor's step 3. The checks in the editor tab will flag anything that still doesn't fit.
+=== 1. WHAT THE TRANSCRIPT CONTAINS ===
+The speaker dictates a list of captions. Each caption has an action (the words on the mascot's sign), a time in seconds, and one or more target cells on a grid. The three parts come in any order ("Action kick out, time 3.045, target cell E9" or "Time 7.647, target cell H5, action hand behind head"). The text was transcribed automatically, so it contains errors, repeats, filler and stray words. The speaker may also name the person (the account name) with the time it appears and disappears, may give the account's username, may dictate a post caption ("Caption, ..."), and may give extra instructions (for example, keep some bubbles on screen).
+Never drop an action the speaker listed. Never invent an action the speaker did not list.
 
----
+=== 2. REPAIR THE TRANSCRIPTION ===
+- Grid: 15 columns A to O (left to right) and 15 rows 1 to 15 (top to bottom). A cell is one capital letter plus a number, e.g. E9, J1, G14. Only A-O and 1-15 are valid. If a cell is invalid, use the nearest valid one.
+- Spoken letters are often misheard. Map them: "key"/"kay" = K, "jay" = J, "eye" = I, "age"/"aitch" = H, "gee" = G, "dee" = D, "bee" = B, "see"/"sea" = C, "eff" = F, "el"/"elle" = L, "em" = M, "en" = N, "oh" = O, "eh" = A, "e" = E.
+- Times are split by the transcriber. "5.3 16" means 5.316. "8.4 8.5" means 8.485. Rule: a time with one decimal followed by a stray number fragment is merged into a 3-decimal time. Times are plain numbers in seconds. A stray letter stuck to a time ("L11.209") is dropped.
+- Remove repeated words and stutters ("Cross kick Action Cross kick" is one caption; "Pull. Pull up. Action, pull up." is one caption "pull up"). Ignore filler and words that are not data ("Target bubble", "for it", "right now", "okay", "I mean").
+- "2 cells" or several cells listed for one action: put all of those cells in the cells list. Use only cells the speaker said.
+- If a caption has no cell, use ["H8"]. If a caption has no time, estimate one evenly between its neighbours.
+- Sort all captions by time, ascending. Give ids 1, 2, 3, ... in that order. If two times are equal, move the later one 0.05s later.
+- If the speaker spells a name out ("R-E-V-H-E-I-M") or says it in parts ("Lena and then XR"), use that spelling. A name said twice because of the spelling is written once.
 
-You turn a spoken recording transcript into the JSON that drives a comic-bubble video edit. Follow these rules exactly and output only what is asked at the end.
+=== 3. THE CAPTIONS (WHAT THE MASCOT DOES) ===
+Every caption is an object: {"id": n, "text": "...", "from": t, "to": t, "cells": ["E9"], "mode": "center", "out": "default"}
+- The FIRST caption (id 1) is the NAME when the speaker gives a name: the mascot opens with a close-up, holding the name on his sign. text = the full name written normally (e.g. "Stella Revheim"). from = the time the name appears. to = from + 0.266. cells = the cells given, or ["I5"] if none. out = the time the name disappears as a number, or "default" if none is given.
+- Every other caption is an action. text = the action in short lowercase words, as spoken, cleaned up ("kick out", "hand down the middle"). The words must fit on the sign: keep the speaker's words but drop filler, so most actions are 1 to 4 words. from = its time. cells = its target cells. mode is always "center".
+- The mascot runs to the FIRST cell in the list and points at it. When an action has several cells, put the cell of the main body part first (the one the speaker said first, unless they say otherwise).
+- Only add "tail": "<cell>" to a caption if the speaker explicitly says where the tail should point (only used by the classic bubbles, the mascot ignores it).
 
-DANCER NAME: <the name for the name bubble, e.g. Stella Revheim>
-VIDEO FILE: <the video's file name, e.g. stella.mp4, or leave as video.mp4>
-GRID: 20x20 (columns A to T from left to right, rows 1 to 20 from top to bottom, so cells go from A1 to T20)
+=== 4. TIMING RULES (the program rejects the JSON if these fail) ===
+- Numbers have at most 3 decimals and are never in quotes.
+- For every caption: from < to.
+- Every caption's from must be greater than the previous caption's to.
+- "to" for an action caption = min(from + 0.2, max(from + 0.05, nextCaptionFrom - 0.05)). The last caption: to = from + 0.2.
+- "out" is either "default" or a number. A number must be greater than the caption's "to" and not later than the next caption's "from". For the LAST caption a number may be any value greater than "to".
+- Only ONE caption can be on screen at a time, so no caption can stay after the next caption has started. If the speaker asks to keep captions on screen ("keep them until the end of the video"): for each such caption that is not the last, set out = max(to + 0.05, nextCaptionFrom - 0.2); for the last caption set out = 600.
+- Captions very close in time are fine: the mascot then stays where he is and only changes the words on his sign.
 
-## What the speaker says
+=== 5. THE POST CAPTION AND THE USERNAME ===
+- "caption" is the text for the Instagram / TikTok post. It goes in the post's caption box when the video is exported from the server.
+- Username: the account's handle. If the speaker says it ("username lena underscore xr"), use it: lowercase, no spaces, "underscore" = _, "dot" = . . If the speaker does not say it, build it from the name: lowercase with the spaces removed ("Lena XR" -> "lenaxr").
+- If the speaker dictates a caption ("Caption, ..."), write it as clean text with normal capitals and punctuation, without changing its meaning. "hashtag dance" = #dance, "at sign" / "at" before a name = @. EVERY time the person's name (or part of it) is mentioned in the caption, write @username instead ("Lena XR killing it" -> "@lenaxr killing it").
+- If the speaker dictates no caption, use "caption": "". Never invent a caption.
+- The name caption (id 1) keeps the name as written normally, not the username.
 
-The transcript is a list of spoken markers, in order:
-
-- `Target cell <CELL>, time <TIME>.` starts a new bubble whose tail points at CELL and whose words appear at TIME.
-- `Action, <words>.` gives the words for the most recent target. If several actions follow one target, join them into one text with ", " (example: "bend head down, hand to chest").
-- `Name bubble.` means the NEXT target is the name bubble. Its words are the DANCER NAME, not an action. An `Action` said right after the name bubble's target does NOT make a second bubble (two bubbles can never start at the same time): leave it out and list it under Notes.
-- `And.` between two targets means both are the same bubble with two tails: one bubble, both cells, at the first target's time. The action after the second target gives the words.
-- `Impact, cell <CELL>, time <TIME>.` (optionally followed by `until <TIME>`) puts an impact burst at CELL at TIME. It is not a bubble.
-- Ignore everything else: player text like "Play", "Mute", "Settings", "00:00", the recording's file name, filler words.
-
-## Fixing what speech-to-text gets wrong
-
-- Times: the speaker always says seconds with three decimals. Speech-to-text sometimes adds or moves dots ("1.0262", "1.0.900", "1.1.363"). Fix every time like this: take all its digits, the LAST THREE are the thousandths and the rest are whole seconds. So "1.0262" → 10.262, "1.0.900" → 10.900, "1.1.363" → 11.363, "0.965" → 0.965, "7.560" → 7.56.
-- Times must go up through the recording. If a fixed time is still lower than the one before, keep it but list it under Notes.
-- Cells: a letter A–T plus a number 1–20. Letters may come out spelled as they sound: eff→F, bee→B, see/sea→C, dee→D, ee→E, gee→G, aitch→H, eye→I, jay→J, kay→K, el→L, em→M, en→N, oh→O, pee→P, cue→Q, ar/are→R, ess→S, tee→T. So "EFF13" → F13. A cell outside A1–T20 is a mistake: list it under Notes and leave that bubble out.
-
-## Building the bubbles ("captions")
-
-- One caption per bubble, in time order, ids 1, 2, 3, ... in that order. The name bubble is caption id 1.
-- `text`: the action words, lower case, without a full stop. For the name bubble: the DANCER NAME as written above.
-- `cells`: the target cell, or both cells for an `And.` pair.
-- `from`: the fixed time. `to`: from + 0.2, but at most the next caption's from − 0.01.
-- `mode`: always "center". `out`: always "default".
-- A target that never gets an action (and is not the name bubble) has no words: leave it out and list it under Notes.
-- Two targets with the same cell and the same time are one bubble: join their actions with ", ".
-- Two bubbles at the same time on different cells without `And.`: make them one bubble with both cells, and list it under Notes.
-- No two captions may have the same `from`: each caption's `from` must be later than the previous caption's `to`.
-- DANCER NAME is used exactly as written above (if it was spelled out letter by letter with dashes, write it as one word, e.g. "S-A-B-Y-0-7-3" → "saby073").
-
-## Impacts
-
-Every `Impact` marker becomes `{"cell": CELL, "from": TIME}` in `impact.at` (add `"to": TIME` when "until" was said), in time order.
-Always write `"captions": []` inside `impact`, so the only bursts are the ones that were said.
-
-## Output
-
-Output exactly this, with the captions and impacts filled in, in one ```json code block:
-
-```json
+=== 6. FIXED PARTS (copy exactly, then insert your captions and the post caption) ===
+Use "video.mp4" for video.file unless the speaker names the video file.
 {
   "version": 1,
-  "video": {"file": "<VIDEO FILE>"},
-  "grid": {"size": 20},
+  "video": {"file": "video.mp4"},
+  "grid": {"size": 15},
   "fps": 30,
   "style": {
     "type": "comic-bubble",
@@ -63,43 +51,53 @@ Output exactly this, with the captions and impacts filled in, in one ```json cod
     "font": {"family": "Comic Neue", "weight": 700, "sizeCells": 0.4, "capitals": true},
     "outlineCells": 0.05,
     "ballRadiusCells": 0.25,
-    "tail": {"enabled": true, "defaultTarget": "J10", "maxLengthCells": 0.5, "reach": 0.6}
+    "tail": {"enabled": true, "defaultTarget": "H8", "maxLengthCells": 1.8, "reach": 0.6}
   },
   "timing": {
-    "exitFadeSeconds": 0.05, "gapBeforeNextSeconds": 0.5, "lastHoldSeconds": 0.6,
-    "firstBallPopSeconds": 0.15, "firstOpenSeconds": 0.15, "endCloseSeconds": 0.15, "endShrinkSeconds": 0.15,
+    "exitFadeSeconds": 0.05,
+    "gapBeforeNextSeconds": 0.5,
+    "lastHoldSeconds": 0.6,
+    "firstBallPopSeconds": 0.15,
+    "firstOpenSeconds": 0.15,
+    "endCloseSeconds": 0.15,
+    "endShrinkSeconds": 0.15,
     "split": {"close": 0.25, "travel": 0.5, "open": 0.25}
   },
-  "captions": [
-    {"id": 1, "text": "<DANCER NAME>", "from": 0.965, "to": 1.165, "cells": ["J6"], "mode": "center", "out": "default"}
-  ],
-  "impact": {"size": 1.5, "captions": [], "at": []},
+  "captions": [ ...one caption object per line, comma separated... ],
   "zooms": [],
-  "ending": []
+  "ending": [],
+  "captionZoom": {"enabled": true, "percent": 3.5, "seconds": 0.2},
+  "nameZoom": {"percent": 4, "seconds": 0.5},
+  "popSound": {"enabled": true, "offsetSeconds": 0},
+  "bubbleScale": {"normal": 1, "name": 1},
+  "caption": "...the post caption, or empty..."
 }
-```
+Do not add, rename or remove any field. Do not add any field that is not shown here (except the optional "tail" on a caption). The mascot is the program's default style, so no field is needed to turn it on.
 
-After the code block, write a short **Notes** list of everything you fixed or left out (times you corrected, cells you corrected, targets without an action, merged bubbles), or "Notes: none".
+=== 7. OPTIONAL SETTINGS ===
+Keep the values above unless the speaker clearly asks for a change:
+- "no zoom" / "turn the zoom off": captionZoom.enabled = false. A different zoom amount: captionZoom.percent (0.1 to 20).
+- "no zoom on the name": nameZoom.percent = 0. Otherwise nameZoom.percent is 0 to 30.
+- "no sound" / "no pop": popSound.enabled = false. Sound earlier or later: popSound.offsetSeconds (-0.5 to 0.5, negative = earlier).
+- "bigger / smaller bubbles": bubbleScale.normal and bubbleScale.name (each 0.7 to 2.5, 1 = normal).
 
-## Example
+=== 8. CHECK BEFORE YOU ANSWER (silently) ===
+1. Valid JSON: double quotes, no trailing commas, no comments, numbers not in quotes. Quotes inside the caption text are escaped (\").
+2. Every action the speaker listed is there, sorted by time, ids 1..n with no gaps.
+3. Every cell is a letter A-O plus a number 1-15, and the main cell is first.
+4. All timing rules in section 4 hold for every caption.
+5. The post caption uses @username for every mention of the person, or is "" if none was dictated.
+6. Nothing outside the JSON object.
 
-Transcript:
-"Name bubble. Target cell J6, time 0.965. Target cell I12, time 3.936. Action, bend head down. Action, hand to chest. Target cell G7, time 7.560. And. Target cell O9, time 7.560. Action, lock hands. Target cell EFF13, time 8.668. Action, kick to the left. Impact, cell F13, time 8.700. Target cell D17, time 1.0262. Target cell E10, time 1.0.900. Action, hands forward."
-
-Captions and impacts:
-```json
-"captions": [
-  {"id": 1, "text": "Stella Revheim", "from": 0.965, "to": 1.165, "cells": ["J6"], "mode": "center", "out": "default"},
-  {"id": 2, "text": "bend head down, hand to chest", "from": 3.936, "to": 4.136, "cells": ["I12"], "mode": "center", "out": "default"},
-  {"id": 3, "text": "lock hands", "from": 7.56, "to": 7.76, "cells": ["G7", "O9"], "mode": "center", "out": "default"},
-  {"id": 4, "text": "kick to the left", "from": 8.668, "to": 8.868, "cells": ["F13"], "mode": "center", "out": "default"},
-  {"id": 5, "text": "hands forward", "from": 10.9, "to": 11.1, "cells": ["E10"], "mode": "center", "out": "default"}
-],
-"impact": {"size": 1.5, "captions": [], "at": [{"cell": "F13", "from": 8.7}]}
-```
-Notes: "EFF13" read as F13. Times "1.0262" → 10.262 and "1.0.900" → 10.9. Target D17 at 10.262 had no action and was left out.
+=== EXAMPLE ===
+Transcript: "The account is Stella Revheim, Revheim as in R-E-V-H-E-I-M. Name appears at 1.085 and disappears at 2.553. Action kick out time 3.045 target cell E9. Action swing hands target cells key 4 and F5, time 3.8. Action cross jump target cell G14 time 5.3 16. Caption, Stella with the smoothest footwork hashtag dance."
+Captions part of the correct answer:
+    {"id": 1, "text": "Stella Revheim", "from": 1.085, "to": 1.351, "cells": ["I5"], "mode": "center", "out": 2.553},
+    {"id": 2, "text": "kick out", "from": 3.045, "to": 3.245, "cells": ["E9"], "mode": "center", "out": "default"},
+    {"id": 3, "text": "swing hands", "from": 3.8, "to": 4.0, "cells": ["K4", "F5"], "mode": "center", "out": "default"},
+    {"id": 4, "text": "cross jump", "from": 5.316, "to": 5.516, "cells": ["G14"], "mode": "center", "out": "default"}
+Post caption part of the correct answer:
+    "caption": "@stellarevheim with the smoothest footwork #dance"
+(In the real answer the whole JSON from section 6 is output, not only these parts.)
 
 TRANSCRIPT:
-<paste the transcript here>
-
----

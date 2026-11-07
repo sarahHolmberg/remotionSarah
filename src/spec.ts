@@ -50,6 +50,7 @@ export type Spec = {
   mascot?: Record<string, number>; // optional: the mascot's settings, as "Copy settings" in the playground gives them (src/mascot/mascot.js DEFAULTS fill the rest) // engine: "svg" = classic, "three" = Real 3D (Three.js); seeThrough: 0 = solid, 0.5 = half see-through (the words stay solid) // optional: the bubbles are thick discs turned around their vertical axis (left side forward); slant = most degrees (each bubble gets a random share), depth = thickness in grid cells; slant 0 = flat
   outro?: {secondsBeforeEnd: number; text?: string}; // optional: the end bubble (center, fills the screen, three dots turn into the text, pop sound); secondsBeforeEnd 0 = off
   chain?: {enabled?: boolean; windowSeconds: number}; // optional: bubbles that start within windowSeconds of a group's first bubble stay up together, linked like a chain (enabled missing = on, false = off)
+  caption?: string; // optional: the post caption (Instagram / Buffer); the post boxes start with it after an export
   bubbleScale?: BubbleScale; // optional: size of the normal bubbles and of the name bubble (the whole bubble grows: words, bubble, picture circle; the tail tip stays where it points)
 };
 
@@ -106,7 +107,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
 
   if (!isObj(raw)) return {errors: ["the JSON must be an object { ... }"], warnings};
   const s = raw;
-  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubble3d", "mascot", "bubbleScale"], "top level");
+  keys(s, ["version", "video", "picture", "grid", "fps", "style", "timing", "captions", "zooms", "ending", "captionZoom", "nameZoom", "popSound", "chain", "outro", "impact", "bubble3d", "mascot", "bubbleScale", "caption"], "top level");
   if (s.version !== 1) errors.push("version: must be 1");
   if (!isObj(s.video) || typeof s.video.file !== "string" || !s.video.file || /[\\/]|\.\./.test(s.video.file)) errors.push("video.file: must be a file name inside the public folder (no slashes)");
   if (s.picture !== undefined && (!isObj(s.picture) || typeof s.picture.file !== "string" || !s.picture.file || /[\\/]|\.\./.test(s.picture.file))) errors.push("picture.file: must be a file name inside the public folder (no slashes)");
@@ -247,6 +248,7 @@ export const validateSpec = (raw: unknown): {errors: string[]; warnings: string[
   }
 
   // mascot (optional): numbers only (the playground's settings)
+  if (s.caption !== undefined && (typeof s.caption !== "string" || s.caption.length > 2200)) errors.push("caption: must be text, at most 2200 characters (Instagram's limit)");
   if (s.mascot !== undefined && (!isObj(s.mascot) || !Object.values(s.mascot).every(isNum))) errors.push('mascot: must be the settings from the playground, like {"size": 12.5, "sign": 5.8}');
 
   // bubble3d (optional)
