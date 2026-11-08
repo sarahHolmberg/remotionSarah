@@ -38,7 +38,7 @@ Every caption is an object: {"id": n, "text": "...", "from": t, "to": t, "cells"
 - If the speaker dictates no caption, use "caption": "". Never invent a caption.
 - The name caption (id 1) keeps the name as written normally, not the username.
 
-=== 6. FIXED PARTS (copy exactly, then insert your captions and the post caption) ===
+=== 6. FIXED PARTS (copy exactly, then insert your captions, the post caption and the username) ===
 Use "video.mp4" for video.file unless the speaker names the video file.
 {
   "version": 1,
