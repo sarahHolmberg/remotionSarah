@@ -88,7 +88,7 @@ const graph = async (path, params, method = "POST") => {
       // the token itself no longer works (e.g. the Facebook password was changed): nothing will post until it is replaced
       const m = `AUTH ERROR: the Instagram access token no longer works (Meta: ${e.message}). Make a new Page access token and add it as a new version of the IG_ACCESS_TOKEN secret, then redeploy.`;
       logError(m);
-      throw new Error(m);
+      throw new FinalError(m);
     }
     throw new Error(`Meta ${path}: ${e.message}${e.error_user_msg ? ` (${e.error_user_msg})` : ""} [code ${e.code}${e.error_subcode ? `/${e.error_subcode}` : ""}]`);
   }
@@ -98,14 +98,21 @@ const graph = async (path, params, method = "POST") => {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// create container -> wait until FINISHED -> publish
-const publish = async (job) => {
+// an error that trying again without tags can't fix (the token, or Instagram failing to process the video itself)
+class FinalError extends Error {}
+// "@lena.xr" -> "lena.xr": the name stays in the caption as plain text instead of a mention
+const plainCaption = (text) => text.replace(/(^|[^A-Za-z0-9._])@(?=[A-Za-z0-9._])/g, "$1");
+
+// create container -> wait until FINISHED -> publish.
+// level 0: everything; 1: without the tags and collaborators; 2: also the caption's @mentions as plain text.
+// A wrong username makes Meta refuse the whole post, so run() steps down the levels instead of failing.
+const publish = async (job, level = 0) => {
   const params = {media_type: job.type, video_url: publicUrl(job.video)};
   if (job.type === "REELS") {
-    Object.assign(params, {caption: job.caption ?? "", share_to_feed: "true"});
+    Object.assign(params, {caption: level >= 2 ? plainCaption(job.caption ?? "") : (job.caption ?? ""), share_to_feed: "true"});
     if (job.thumbOffsetMs) params.thumb_offset = String(job.thumbOffsetMs);
-    if (job.collaborators?.length) params.collaborators = JSON.stringify(job.collaborators);
-    if (job.userTags?.length) params.user_tags = JSON.stringify(job.userTags.map((username) => ({username})));
+    if (level < 1 && job.collaborators?.length) params.collaborators = JSON.stringify(job.collaborators);
+    if (level < 1 && job.userTags?.length) params.user_tags = JSON.stringify(job.userTags.map((username) => ({username})));
   }
   const {id: container} = await graph(`/${IG_USER}/media`, params);
   log(`job ${job.id}: container ${container}, waiting for Instagram to process the video`);
@@ -113,8 +120,8 @@ const publish = async (job) => {
   for (;;) {
     const c = await graph(`/${container}`, {fields: "status_code,status"}, "GET");
     if (c.status_code === "FINISHED") break;
-    if (c.status_code === "ERROR" || c.status_code === "EXPIRED") throw new Error(`Instagram could not process the video: ${c.status ?? c.status_code}`);
-    if (Date.now() > until) throw new Error(`Instagram was still processing the video after ${PROCESS_MINUTES} minutes (${c.status_code})`);
+    if (c.status_code === "ERROR" || c.status_code === "EXPIRED") throw (level < 2 ? new Error(`Instagram could not process the post: ${c.status ?? c.status_code}`) : new FinalError(`Instagram could not process the video: ${c.status ?? c.status_code}`));
+    if (Date.now() > until) throw new FinalError(`Instagram was still processing the video after ${PROCESS_MINUTES} minutes (${c.status_code})`);
     await wait(5000);
   }
   const {id: media} = await graph(`/${IG_USER}/media_publish`, {creation_id: container});
@@ -133,7 +140,24 @@ const run = async (id) => {
   Object.assign(job, {status: "publishing", startedAt: Date.now(), error: undefined});
   await putJson(jobName(id), job);
   try {
-    const r = await publish(job);
+    let r;
+    const hasTags = job.type === "REELS" && (job.userTags?.length || job.collaborators?.length);
+    const hasMentions = job.type === "REELS" && /@[A-Za-z0-9._]/.test(job.caption ?? "");
+    const levels = [0, ...(hasTags ? [1] : []), ...(hasMentions ? [2] : [])];
+    for (const [i, level] of levels.entries()) {
+      try {
+        if (i > 0) await putJson(jobName(id), Object.assign(job, {startedAt: Date.now()})); // still working: a second run must not start
+        r = await publish(job, level);
+        const notes = [];
+        if (level >= 1 && hasTags) notes.push(`Posted without tags/collaborators (${[...(job.userTags ?? []), ...(job.collaborators ?? [])].map((n) => "@" + n).join(" ")}): Instagram refused them. Tag them in the app.`);
+        if (level >= 2) notes.push("The caption's @names were posted as plain text.");
+        if (notes.length) job.notes = [...(job.notes ?? []), ...notes];
+        break;
+      } catch (e) {
+        if (e instanceof FinalError || i === levels.length - 1) throw e;
+        log(`job ${id}: Meta refused the post (${e.message}); trying again ${levels[i + 1] === 1 ? "without the tags and collaborators" : "with the caption's @names as plain text"}`);
+      }
+    }
     Object.assign(job, {status: "posted", mediaId: r.media, permalink: r.permalink, postedAt: new Date().toISOString()});
     log(`job ${id}: posted ${r.permalink ?? r.media}`);
     await deleteObject(job.video).catch((e) => log(`job ${id}: could not delete the video: ${e.message}`));
@@ -159,12 +183,12 @@ const cutStory = async (file) => {
 class InputError extends Error {}
 
 const USERNAME = /^[A-Za-z0-9._]{1,30}$/;
-const names = (list, what, max) => {
-  const out = (Array.isArray(list) ? list : []).map((n) => String(n).trim().replace(/^@/, "")).filter(Boolean);
-  const bad = out.filter((n) => !USERNAME.test(n));
-  if (bad.length) throw new InputError(`${what}: not an Instagram username: ${bad.join(", ")}`);
-  if (out.length > max) throw new InputError(`${what}: at most ${max}`);
-  return out;
+// usernames from the panel: ones that can't be Instagram usernames are left out (a note says which), never a refusal
+const names = (list, max, notes, what) => {
+  const all = (Array.isArray(list) ? list : []).map((n) => String(n).trim().replace(/^@/, "")).filter(Boolean);
+  const bad = all.filter((n) => !USERNAME.test(n));
+  if (bad.length) notes.push(`${what}: left out ${bad.join(", ")} (not an Instagram username)`);
+  return all.filter((n) => USERNAME.test(n)).slice(0, max);
 };
 
 // Is this the Cloud Task calling? Then the website password is not needed for this one request.
@@ -205,16 +229,18 @@ export const makeInstagramHandler = (outFile) => {
         const b = JSON.parse(body);
         if (!fs.existsSync(outFile)) return send(res, 400, {error: "No exported video yet: press Export video first."});
         const shared = {status: "scheduled", createdAt: new Date().toISOString()};
+        const notes = [];
         const reel = {
           ...shared,
           id: crypto.randomBytes(8).toString("hex"),
           type: "REELS",
           caption: String(b.caption ?? "").slice(0, 2200),
-          userTags: names(b.userTags, "Tag people", 20),
-          collaborators: names(b.collaborators, "Collaborators", 3),
+          userTags: names(b.userTags, 20, notes, "Tag people"),
+          collaborators: names(b.collaborators, 3, notes, "Collaborators"),
           thumbOffsetMs: Number(b.coverSeconds) > 0 ? Math.round(Number(b.coverSeconds) * 1000) : 0,
         };
-        if (!reel.userTags.length) throw new InputError("Tag people: the dancer must be tagged (their @username).");
+        if (!(Array.isArray(b.userTags) && b.userTags.length)) throw new InputError("Tag people: the dancer must be tagged (their @username).");
+        if (notes.length) reel.notes = notes;
         const story = {...shared, id: crypto.randomBytes(8).toString("hex"), type: "STORIES", caption: "", userTags: [], collaborators: [], thumbOffsetMs: 0, reel: reel.id};
         // when (both at the same time)
         let at;

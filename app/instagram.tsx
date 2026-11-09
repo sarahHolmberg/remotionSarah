@@ -6,7 +6,7 @@
 
 import {useEffect, useState} from "react";
 
-type Job = {id: string; type: "REELS" | "STORIES"; caption: string; publishAt: string; status: "scheduled" | "publishing" | "posted" | "failed"; error?: string; permalink?: string};
+type Job = {id: string; type: "REELS" | "STORIES"; caption: string; publishAt: string; status: "scheduled" | "publishing" | "posted" | "failed"; error?: string; permalink?: string; notes?: string[]};
 type Queue = {slots: string[]; times: string[]; timeZone: string; jobs: Job[]};
 type When = "slot" | "at" | "now";
 
@@ -71,7 +71,7 @@ export const PostToInstagram = ({exported, seconds, startCaption, startTag}: {ex
     const name = (j: Job) => (j.type === "REELS" ? "Reel" : "Story");
     const failed = jobs.filter((j) => j.status === "failed");
     if (failed.length) setMsg(failed.map((j) => `${name(j)} failed: ${j.error}`).join(" · "));
-    else setMsg(when === "now" ? `Posted: ${jobs.map((j) => `${name(j)} ${j.permalink ?? "done"}`).join(" · ")}` : `Reel + Story scheduled for ${show(jobs[0].publishAt)}.`);
+    else setMsg((when === "now" ? `Posted: ${jobs.map((j) => `${name(j)} ${j.permalink ?? "done"}`).join(" · ")}` : `Reel + Story scheduled for ${show(jobs[0].publishAt)}.`) + jobs.flatMap((j) => j.notes ?? []).map((n) => ` ⚠ ${n}`).join(""));
     if (!failed.length) [setCaption, setCollabs].forEach((f) => f(""));
   };
 
@@ -142,7 +142,7 @@ export const PostToInstagram = ({exported, seconds, startCaption, startTag}: {ex
             <div key={j.id} style={{display: "flex", gap: 8, color: "#8fe08f"}}>
               <span style={{width: 130, flex: "none"}}>{show(j.publishAt)}</span>
               <a href={j.permalink} target="_blank" rel="noopener" style={{color: "#8fe08f", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>
-                ✓ {j.type === "REELS" ? "Reel" : "Story"} posted · {j.caption || "(no caption)"}
+                ✓ {j.type === "REELS" ? "Reel" : "Story"} posted · {j.notes?.length ? `⚠ ${j.notes.join(" ")} · ` : ""}{j.caption || "(no caption)"}
               </a>
             </div>
           ))}
