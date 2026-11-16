@@ -97,6 +97,46 @@
       .inbox a { color: var(--link); font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
       select.file { min-height: 40px; font: inherit; }
       .btn:disabled { color: #8a8a8a; cursor: default; box-shadow: none; }
+      /* the simple view (app/simple.tsx) */
+      .simple .win { max-width: 560px; flex: none; }
+      .simple .body { gap: 18px; padding: 18px 16px; }
+      .step { display: flex; flex-direction: column; gap: 8px; }
+      .step-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+      .num { width: 24px; height: 24px; border-radius: 50%; background: var(--blue); color: #fff; font-size: 13px; line-height: 24px; text-align: center; flex: none; }
+      .tick { color: #2f9e2f; font-size: 18px; margin-left: auto; }
+      .simple .code { min-height: 110px; flex: none; resize: vertical; }
+      .pick { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 12px; cursor: pointer; background: #fff; border: 2px dashed #7f9db9; border-radius: 6px; }
+      .pick:hover, .pick:focus-within { border-color: var(--blue); }
+      .pick.has { border-style: solid; }
+      .pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+      .pick img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; flex: none; }
+      .pick-ico { width: 44px; height: 44px; border-radius: 4px; background: #eef3fb; color: var(--blue); font-size: 22px; line-height: 44px; text-align: center; flex: none; }
+      .pick-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .note { font-size: 13px; }
+      .note.err { color: #b3261e; }
+      .btn.primary { min-height: 48px; font-size: 16px; font-weight: 700; color: #fff; border-color: #0a3d91; background: linear-gradient(#4b9bff, #0a5fe0 60%, #0849b5); }
+      .btn.primary:disabled { color: #f0f0f0; background: #9fb4d6; border-color: #8aa0c4; }
+      .progress { display: flex; flex-direction: column; gap: 10px; }
+      .stepper { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
+      .stepper li { flex: 1; padding-top: 8px; border-top: 4px solid #cfd8e6; font-size: 12px; color: #666; text-align: center; transition: border-color 0.3s; }
+      .stepper li.past { border-color: #2f9e2f; color: #2f6e2f; }
+      .stepper li.now { border-color: var(--blue); color: #000; font-weight: 700; }
+      .stepper li.fail { border-color: #d9382a; color: #b3261e; font-weight: 700; }
+      .bar { height: 14px; border-radius: 7px; background: #dde4ef; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2); }
+      .bar i {
+        display: block; height: 100%; border-radius: 7px; transition: width 0.6s ease;
+        background: repeating-linear-gradient(-45deg, #3d8bff 0 10px, #0a5fe0 10px 20px); background-size: 28px 28px;
+        animation: stripes 0.8s linear infinite;
+      }
+      @keyframes stripes { to { background-position: 28px 0; } }
+      @media (prefers-reduced-motion: reduce) { .bar i { animation: none; } }
+      .done { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 24px 8px; text-align: center; }
+      .done h2 { margin: 0; font-size: 20px; }
+      .done p { margin: 0 0 12px; }
+      .big-ok { width: 64px; height: 64px; border-radius: 50%; background: #2f9e2f; color: #fff; font-size: 36px; line-height: 64px; }
+      .linkbtn { white-space: nowrap; background: none; border: 0; padding: 6px 0; color: var(--link); font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; }
+      .linkbtn:disabled { color: #8a8a8a; cursor: default; }
+      [hidden] { display: none !important; }
       @media (min-width: 900px) {
         .body.cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); }
       }

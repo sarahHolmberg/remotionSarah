@@ -15,6 +15,7 @@ import {SendToBuffer} from "./buffer";
 import {PostToInstagram} from "./instagram";
 import {GridOverlay} from "./grid";
 import {BubbleEditor} from "./bubbles";
+import {streamRender, uploadFile} from "./pipeline";
 
 const GRID_KEY = "comic-show-grid"; // the grid checkbox is remembered in the browser
 
@@ -35,19 +36,6 @@ export class Boundary extends Component<{children: ReactNode}, {err: Error | nul
 
 type Meta = {w: number; h: number; seconds: number};
 type Uploaded = {url: string; name: string};
-
-// Files go to the server in pieces: Cloud Run refuses request bodies over 32 MB. Returns the name the server saved it as.
-const UPLOAD_PIECE = 8 * 1024 * 1024;
-const uploadFile = async (f: File, name: string): Promise<string> => {
-  let saved = "";
-  for (let offset = 0; offset === 0 || offset < f.size; offset += UPLOAD_PIECE) {
-    const up = await fetch(`/api/upload?name=${encodeURIComponent(name)}&offset=${offset}`, {method: "POST", body: f.slice(offset, offset + UPLOAD_PIECE)});
-    if (!up.ok) throw new Error(`upload of ${f.name} failed: ${up.status} ${await up.text()}`);
-    saved = (await up.json()).file;
-    console.log(`[Preview] upload ${f.name}: ${Math.min(offset + UPLOAD_PIECE, f.size)} of ${f.size} bytes`);
-  }
-  return saved;
-};
 
 const parse = (text: string): {spec?: Spec; errors: string[]} => {
   if (!text.trim()) {
@@ -251,39 +239,14 @@ export const Preview = ({embedded = false}: {embedded?: boolean}) => {
 
       setExportMsg("Rendering... (the first time can take a while)");
       console.log("[Preview] export: starting the render");
-      const res = await fetch("/api/render", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(spec)});
-      if (!res.ok || !res.body) throw new Error(`render request failed: ${res.status} ${await res.text()}`);
-
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      let done = false;
-      let failed = "";
-      const line = (l: string) => {
-        console.log("[Preview] render:", l);
-        setRenderLog((old) => [...old.slice(-11), l]);
-        if (l.includes("[RENDER DONE]")) done = true;
-        if (l.includes("[RENDER FAILED]")) failed = l;
-      };
-      for (;;) {
-        const {done: end, value} = await reader.read();
-        if (end) break;
-        buf += dec.decode(value, {stream: true});
-        const parts = buf.split(/[\r\n]+/);
-        buf = parts.pop() ?? "";
-        parts.filter(Boolean).forEach(line);
-      }
-      if (buf.trim()) line(buf.trim());
-
-      if (done) {
-        console.log("[Preview] export: render done, downloading comic.mp4");
-        setExportMsg("Done. Downloading comic.mp4");
-        setExported(true);
-        const a = document.createElement("a");
-        a.href = `/api/download?t=${Date.now()}`;
-        a.download = "comic.mp4";
-        a.click();
-      } else throw new Error(failed || "the render ended without finishing, see the log below");
+      await streamRender(spec, (l) => setRenderLog((old) => [...old.slice(-11), l]));
+      console.log("[Preview] export: render done, downloading comic.mp4");
+      setExportMsg("Done. Downloading comic.mp4");
+      setExported(true);
+      const a = document.createElement("a");
+      a.href = `/api/download?t=${Date.now()}`;
+      a.download = "comic.mp4";
+      a.click();
     } catch (e) {
       console.error("[Preview] export failed", e);
       setExportMsg(`Export failed: ${(e as Error).message}`);

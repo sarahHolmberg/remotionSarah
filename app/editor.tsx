@@ -10,6 +10,7 @@ import {VersionTag} from "./version";
 import {Boundary, Preview} from "./previewPanel";
 import {DEFAULTS as MASCOT_DEFAULTS, SLIDERS as MASCOT_SLIDERS} from "../src/mascot/mascot";
 import {InboxBar} from "./inbox";
+import {SimpleView} from "./simple";
 
 console.log("[Editor] 1. file loaded");
 
@@ -48,7 +49,7 @@ const Slider = ({label, value, min, max, step, show, onChange, disabled}: {label
   </div>
 );
 
-const Editor = () => {
+const Editor = ({onSimple}: {onSimple: () => void}) => {
   console.log("[Editor] 2. component rendering");
   const [text, setText] = useState(() => {
     try {
@@ -256,9 +257,9 @@ const Editor = () => {
           <div className="title">
             <span className="ticon" aria-hidden="true" />
             <span className="ttext">Comic editor</span>
-            <span className="cb" aria-hidden="true">_</span>
-            <span className="cb" aria-hidden="true">▢</span>
-            <span className="cb x" aria-hidden="true">✕</span>
+            <button className="btn" onClick={onSimple} style={{minHeight: 30, padding: "2px 10px", fontSize: 13}}>
+              ← Simple view
+            </button>
           </div>
 
           <InboxBar />
@@ -475,4 +476,18 @@ const Editor = () => {
 
 const rootEl = document.getElementById("root");
 console.log(`[Editor] 0. mounting (root element ${rootEl ? "found" : "MISSING"})`);
-createRoot(rootEl!).render(<Editor />);
+// The page starts in the simple view (app/simple.tsx); "See background" shows the full editor + preview, "Simple view" goes back.
+// The simple view stays mounted (only hidden), so what was typed there is kept while the full view is open.
+const App = () => {
+  const [advanced, setAdvanced] = useState(false);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [advanced]);
+  return (
+    <>
+      <SimpleView visible={!advanced} onAdvanced={() => setAdvanced(true)} />
+      {advanced && <Editor onSimple={() => setAdvanced(false)} />}
+    </>
+  );
+};
+createRoot(rootEl!).render(<App />);
