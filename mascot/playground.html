@@ -150,7 +150,7 @@ function createMascot(THREE2, S2) {
   }
   function build() {
     if (man) {
-      world.remove(man.root, man.portal, man.rope, man.target, ...man.puffs, ...man.dust, ...man.lines);
+      world.remove(man.root, man.portal, man.rope, ...man.puffs, ...man.dust, ...man.lines);
     }
     const h = H2 * S2.size / 100, r = h * 0.055, root = new THREE2.Group(), body = new THREE2.Group();
     root.add(body);
@@ -178,16 +178,16 @@ function createMascot(THREE2, S2) {
     glassRim.scale.set(1.08, 1.04, 1);
     glassRim.position.set(0, -h * 0.012, depth / 2 + h * 0.018);
     torso.add(glassRim);
-    const mk = (x, y, l1, l2, parent) => {
+    const mk = (x, y, l1, l2, parent, lr = r) => {
       const s = new THREE2.Group();
       s.position.set(x, y, 0);
       parent.add(s);
-      const a = limb(l1, r, blackM), b = limb(l2, r, blackM);
+      const a = limb(l1, lr, blackM), b = limb(l2, lr, blackM);
       s.add(a.pivot);
       a.end.add(b.pivot);
       return { s, up: a.pivot, lo: b.pivot, hand: b.end, l1, l2 };
     };
-    const armR = mk(h * 0.29, h * 0.38, h * 0.15, h * 0.13, torso), armL = mk(-h * 0.29, h * 0.38, h * 0.15, h * 0.13, torso);
+    const armR = mk(h * 0.29, h * 0.38, h * 0.15, h * 0.13, torso, r * 0.6), armL = mk(-h * 0.29, h * 0.38, h * 0.15, h * 0.13, torso, r * 0.6);
     const legR = mk(h * 0.11, h * 0.02, h * 0.12, h * 0.1, hips), legL = mk(-h * 0.11, h * 0.02, h * 0.12, h * 0.1, hips);
     for (const L of [legR, legL]) {
       const foot = solid(new THREE2.BoxGeometry(h * 0.16, h * 0.06, h * 0.11), blackM);
@@ -208,14 +208,8 @@ function createMascot(THREE2, S2) {
       A.glove.add(palm, finger, thumb);
       A.glove.visible = false;
       A.hand.add(A.glove);
+      A.tip = r * 2.2 + h * 0.2;
     }
-    const target = new THREE2.Group(), tr = Math.max(W2 / N2 * 0.75, h * 0.14);
-    target.add(new THREE2.Mesh(new THREE2.TorusGeometry(tr, tr * 0.22, 8, 40), new THREE2.MeshBasicMaterial({ color: 0 })));
-    const tw = new THREE2.Mesh(new THREE2.TorusGeometry(tr, tr * 0.11, 8, 40), new THREE2.MeshBasicMaterial({ color: 16777215 }));
-    tw.position.z = 1;
-    target.add(tw);
-    target.visible = false;
-    world.add(target);
     const hm = new THREE2.Group();
     const handle = solid(new THREE2.CapsuleGeometry(h * 0.022, h * 0.1, 5, 10), gold);
     handle.position.y = h * 0.07;
@@ -265,7 +259,7 @@ function createMascot(THREE2, S2) {
       return m;
     });
     world.add(root);
-    man = { root, body, hips, torso, armR, armL, legR, legL, shadow, gc, gtex, portal, puffs, h, text: void 0, target, hm, hc, htex, signText: void 0, rope, dust, lines };
+    man = { root, body, hips, torso, armR, armL, legR, legL, shadow, gc, gtex, portal, puffs, h, text: void 0, hm, hc, htex, signText: void 0, rope, dust, lines };
     drawGlass(null, 0);
     drawSign("");
   }
@@ -359,11 +353,26 @@ function createMascot(THREE2, S2) {
       const L = h * (0.28 * S2.reach + 0.24 * S2.sign), halfW = h * 0.115 * S2.sign, halfH = halfW * 1.25, edge = h * 0.29 + halfW + 10;
       const stay = m.items.at(-1).t - m.t + S2.minShow, push = S2.push * Math.min(1, m.items.length > 1 ? 0.75 + stay * 0.2 : Math.max(0, (stay - 0.6) / 1.2));
       const toL = m.x, toR = W2 - m.x, toB = H2 - m.y, nearest = toB < Math.min(toL, toR) ? "bottom" : toL < toR ? "left" : "right";
-      const side = nearest === "left" ? -1 : nearest === "right" ? 1 : m.x < W2 / 2 ? -1 : 1;
+      let side = nearest === "left" ? -1 : nearest === "right" ? 1 : m.x < W2 / 2 ? -1 : 1;
       const nearX = m.x + side * h * 0.75, edgeX = nearest === "left" ? edge : nearest === "right" ? W2 - edge : m.x, nearY = m.y + h * 0.3, edgeY = nearest === "bottom" ? H2 - 6 : nearY;
       const sx = Math.min(W2 - edge, Math.max(edge, nearX + (edgeX - nearX) * push)), holdX = sx + side * h * 0.29;
       const alpha = Math.min(1.45, Math.max(0.03, Math.asin(Math.max(0, Math.min(1, ((side < 0 ? holdX : W2 - holdX) - halfW - 4) / L)))));
       const stand = { x: sx, y: Math.min(H2 - 4, Math.max(h * 0.6 + L * Math.cos(alpha) + halfH + 6, nearY + (edgeY - nearY) * push)) };
+      const cell = W2 / N2, same = (st) => !st.intro && Math.hypot(m.x - st.items.at(-1).x, m.y - st.items.at(-1).y) < cell * 1.5;
+      const used = [];
+      for (let j = out.length - 1; j >= 0 && same(out[j]); j--) used.push(out[j].stand);
+      if (used.length && used.some((u) => Math.hypot(stand.x - u.x, stand.y - u.y) < h * 0.8)) {
+        const fit = (x, y) => {
+          const cx2 = Math.min(W2 - edge, Math.max(edge, x)), sd = cx2 < m.x ? -1 : cx2 > m.x ? 1 : side, hx = cx2 + sd * h * 0.29, al = Math.min(1.45, Math.max(0.03, Math.asin(Math.max(0, Math.min(1, ((sd < 0 ? hx : W2 - hx) - halfW - 4) / L)))));
+          return { x: cx2, y: Math.min(H2 - 4, Math.max(h * 0.6 + L * Math.cos(al) + halfH + 6, y)), side: sd };
+        };
+        const cands = [fit(m.x - side * h * 1.1, stand.y), fit(stand.x + side * h * 1.3, stand.y), fit(stand.x, stand.y - h * 1.1), fit(stand.x, stand.y + h * 1.1), fit(m.x - side * h * 1.1, stand.y - h * 1.1)];
+        const far = (c) => Math.min(...used.map((u) => Math.hypot(c.x - u.x, c.y - u.y)));
+        const pick = cands.find((c) => far(c) >= h * 0.8) ?? cands.reduce((a, b) => far(b) > far(a) ? b : a);
+        stand.x = pick.x;
+        stand.y = pick.y;
+        side = pick.side;
+      }
       const arrive = m.t - S2.lead;
       let travel = null;
       if (pos) {
@@ -439,7 +448,6 @@ function createMascot(THREE2, S2) {
     const st = state(T), h = man.h, R = man.root;
     man.portal.visible = false;
     man.rope.visible = false;
-    man.target.visible = false;
     [...man.puffs, ...man.dust, ...man.lines].forEach((m2) => m2.visible = false);
     man.hm.scale.setScalar(1);
     man.hm.rotation.y = 0;
@@ -588,7 +596,7 @@ function createMascot(THREE2, S2) {
         speedLines(tr.to.x - tr.from.x, tr.to.y - tr.from.y);
         return "Slide (diagonal)";
       }
-      const dist = Math.hypot(q.x - tr.from.x, q.y - tr.from.y) / h, stride = tr.mode === "run" ? 0.9 : 0.55, ph = dist / stride * Math.PI * 2, amp = tr.mode === "run" ? 0.95 : 0.45;
+      const dist2 = Math.hypot(q.x - tr.from.x, q.y - tr.from.y) / h, stride = tr.mode === "run" ? 0.9 : 0.55, ph = dist2 / stride * Math.PI * 2, amp = tr.mode === "run" ? 0.95 : 0.45;
       if (tr.slide && u > 0.78) {
         pose({ lean: -0.35, ll: -1.1, lr: 0.35, klr: 0.9, arz: 1.1, alz: -1.1, bob: -h * 0.04 });
         trail(8, 1.4);
@@ -610,23 +618,22 @@ function createMascot(THREE2, S2) {
       if (T >= x.t - 0.05) ci = j;
     });
     const it = m.items[ci], prev = m.items[Math.max(0, ci - 1)], sw = ci ? clamp((T - (it.t - 0.05)) / 0.15) : 1;
-    const out = m.side, ptRight = out < 0, up = clamp((T - m.arrive) / 0.15), shX = s.x + (ptRight ? 1 : -1) * hS * 0.29 * Math.cos(R.rotation.y), shY = s.y - hS * 0.6;
+    const out = m.side, ptRight = out < 0, up = clamp((T - m.arrive) / 0.15);
     const next = plan[plan.indexOf(m) + 1], leave = next?.travel?.t0 ?? Infinity, k = Math.min(up, clamp((leave - T) / 0.15));
     const cx = prev.x + (it.x - prev.x) * ease(sw), cy = prev.y + (it.y - prev.y) * ease(sw);
-    const tilt = (cx > s.x ? -1 : 1) * S2.lean * up, phi = (Math.atan2(cx - shX, -(shY - cy)) - tilt) * up;
+    const tilt = (cx > s.x ? -1 : 1) * S2.lean * up;
+    const lx = (ptRight ? 1 : -1) * hS * 0.29, ly = hS * 0.38, hipY = s.y - hS * 0.22, px = s.x + (lx * Math.cos(tilt) - ly * Math.sin(tilt)) * Math.cos(R.rotation.y), py = hipY - (lx * Math.sin(tilt) + ly * Math.cos(tilt));
+    const phi = (Math.atan2(cx - px, -(py - cy)) - tilt) * up;
+    const pa = ptRight ? man.armR : man.armL, dist = Math.hypot(cx - px, cy - py) / B, full = Math.max(0.35, (dist - pa.tip) / (pa.l1 + pa.l2));
     const hold = ptRight ? man.armL : man.armR;
     holdIn(hold);
     drawSign(it.text);
     const reach = 1 + (S2.reach - 1) * k, sc = 1 + (S2.sign - 1) * k, L = hS * (0.28 * reach + 0.24 * sc), halfW = hS * 0.115 * sc, holdX = s.x + out * hS * 0.29;
     const room = (out < 0 ? holdX : W2 - holdX) - halfW - 8, alpha = m.intro ? 0.12 : Math.min(1.45, Math.max(0.03, Math.asin(Math.max(0, Math.min(1, room / L)))));
     setReach(hold, reach);
+    setReach(pa, 1 + (full - 1) * up);
     const holdZ = (Math.PI - alpha) * k;
     pose({ bob: Math.sin(T * 3) * h * 8e-3, tilt, lean: 0.12 * up, pointWith: up > 0.3 ? ptRight ? man.armR : man.armL : null, ...ptRight ? { arz: phi, alz: -holdZ - tilt } : { alz: phi, arz: holdZ - tilt } });
-    if (k > 0.05) {
-      man.target.visible = true;
-      man.target.position.set(it.x, -it.y, 40);
-      man.target.scale.setScalar((0.6 + 0.4 * back(ci ? sw : up)) * (1 + 0.1 * Math.sin(T * 8)));
-    }
     const pop = back(k), bump = ci ? 1 + 0.07 * Math.sin(Math.PI * clamp((T - (it.t - 0.05)) / 0.25)) : 1;
     man.hm.scale.setScalar(Math.max(1, 1 + (S2.sign - 1) * pop) * bump);
     man.hm.rotation.y = -R.rotation.y;

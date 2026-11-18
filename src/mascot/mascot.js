@@ -43,7 +43,7 @@ function frameShape(h,inset=0){const s=new THREE.Shape(),k=(x,y)=>[x*h,y*h],w=0.
 function glassShape(h){const s=new THREE.Shape(),k=(x,y)=>[x*h,y*h];s.moveTo(...k(-0.17,0.14));s.lineTo(...k(-0.17,0.44));s.quadraticCurveTo(...k(-0.17,0.62),...k(0,0.65));
   s.quadraticCurveTo(...k(0.17,0.62),...k(0.17,0.44));s.lineTo(...k(0.17,0.14));s.quadraticCurveTo(...k(0.17,0.06),...k(0,0.06));s.quadraticCurveTo(...k(-0.17,0.06),...k(-0.17,0.14));return s}
 function build(){
-  if(man){world.remove(man.root,man.portal,man.rope,man.target,...man.puffs,...man.dust,...man.lines)} // the old character, portal and puffs go before the new ones
+  if(man){world.remove(man.root,man.portal,man.rope,...man.puffs,...man.dust,...man.lines)} // the old character, portal and puffs go before the new ones
   const h=H*S.size/100,r=h*0.055,root=new THREE.Group(),body=new THREE.Group();root.add(body);
   const hips=new THREE.Group();hips.position.y=h*0.22;body.add(hips);
   const torso=new THREE.Group();hips.add(torso);
@@ -55,8 +55,8 @@ function build(){
   for(let i=0;i<uv.count;i++)uv.setXY(i,(pos.getX(i)-bb.min.x)/(bb.max.x-bb.min.x),(pos.getY(i)-bb.min.y)/(bb.max.y-bb.min.y));
   const glass=new THREE.Mesh(gGeo,new THREE.MeshBasicMaterial({map:gtex}));glass.position.z=depth/2+h*0.022;torso.add(glass);
   const glassRim=new THREE.Mesh(new THREE.ShapeGeometry(glassShape(h),24),new THREE.MeshBasicMaterial({color:0x1d1b1e}));glassRim.scale.set(1.08,1.04,1);glassRim.position.set(0,-h*0.012,depth/2+h*0.018);torso.add(glassRim);
-  const mk=(x,y,l1,l2,parent)=>{const s=new THREE.Group();s.position.set(x,y,0);parent.add(s);const a=limb(l1,r,blackM),b=limb(l2,r,blackM);s.add(a.pivot);a.end.add(b.pivot);return{s,up:a.pivot,lo:b.pivot,hand:b.end,l1,l2}};
-  const armR=mk(h*0.29,h*0.38,h*0.15,h*0.13,torso),armL=mk(-h*0.29,h*0.38,h*0.15,h*0.13,torso); // R = screen right
+  const mk=(x,y,l1,l2,parent,lr=r)=>{const s=new THREE.Group();s.position.set(x,y,0);parent.add(s);const a=limb(l1,lr,blackM),b=limb(l2,lr,blackM);s.add(a.pivot);a.end.add(b.pivot);return{s,up:a.pivot,lo:b.pivot,hand:b.end,l1,l2}};
+  const armR=mk(h*0.29,h*0.38,h*0.15,h*0.13,torso,r*0.6),armL=mk(-h*0.29,h*0.38,h*0.15,h*0.13,torso,r*0.6); // R = screen right; slim arms (they stretch to the cell he points at)
   const legR=mk(h*0.11,h*0.02,h*0.12,h*0.1,hips),legL=mk(-h*0.11,h*0.02,h*0.12,h*0.1,hips);
   for(const L of [legR,legL]){const foot=solid(new THREE.BoxGeometry(h*0.16,h*0.06,h*0.11),blackM);foot.position.set(0,-h*0.015,h*0.02);L.hand.add(foot)}
   // each hand: a black fist, and a big white glove with the index finger out (white with a thick black outline reads on any background)
@@ -65,11 +65,7 @@ function build(){
     A.glove=new THREE.Group();const palm=solid(new THREE.SphereGeometry(r*1.7,16,12),white,true,glovePx);
     const finger=solid(new THREE.CapsuleGeometry(r*0.8,h*0.2,6,10),white,true,glovePx);finger.position.y=-(r*1.4+h*0.1);
     const thumb=solid(new THREE.CapsuleGeometry(r*0.5,h*0.04,5,8),white,true,glovePx);thumb.position.set(r*1.3,-r*0.6,0);thumb.rotation.z=0.9;
-    A.glove.add(palm,finger,thumb);A.glove.visible=false;A.hand.add(A.glove)}
-  // the target ring on the cell he points at: white inside a black ring, pulsing
-  const target=new THREE.Group(),tr=Math.max(W/N*0.75,h*0.14);
-  target.add(new THREE.Mesh(new THREE.TorusGeometry(tr,tr*0.22,8,40),new THREE.MeshBasicMaterial({color:0x000000})));
-  const tw=new THREE.Mesh(new THREE.TorusGeometry(tr,tr*0.11,8,40),new THREE.MeshBasicMaterial({color:0xffffff}));tw.position.z=1;target.add(tw);target.visible=false;world.add(target);
+    A.glove.add(palm,finger,thumb);A.glove.visible=false;A.hand.add(A.glove);A.tip=r*2.2+h*0.2} /* hand -> fingertip */
   // the hand mirror in his right hand: handle, gold oval rim, glass
   const hm=new THREE.Group();const handle=solid(new THREE.CapsuleGeometry(h*0.022,h*0.1,5,10),gold);handle.position.y=h*0.07;hm.add(handle);
   const rim=solid(new THREE.TorusGeometry(h*0.075,h*0.018,10,32),gold);rim.position.y=h*0.21;rim.scale.y=1.25;hm.add(rim);
@@ -84,7 +80,7 @@ function build(){
   const portal=new THREE.Group(),ring=new THREE.Mesh(new THREE.TorusGeometry(h*0.34,h*0.035,10,48),new THREE.MeshBasicMaterial({color:0x111111}));
   const disc=new THREE.Mesh(new THREE.CircleGeometry(h*0.33,48),new THREE.MeshBasicMaterial({color:0xcfcfe0,transparent:true,opacity:.85}));portal.add(disc,ring);portal.scale.y=1.25;world.add(portal);
   const puffs=[...Array(7)].map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(h*0.05,10,8),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true}));world.add(m);return m});
-  world.add(root);man={root,body,hips,torso,armR,armL,legR,legL,shadow,gc,gtex,portal,puffs,h,text:undefined,target,hm,hc,htex,signText:undefined,rope,dust,lines};drawGlass(null,0);drawSign("");
+  world.add(root);man={root,body,hips,torso,armR,armL,legR,legL,shadow,gc,gtex,portal,puffs,h,text:undefined,hm,hc,htex,signText:undefined,rope,dust,lines};drawGlass(null,0);drawSign("");
 }
 // the hand mirror's glass: lavender with a shine stripe, and the move's words big enough to read when he holds it up
 function drawSign(text){
@@ -133,11 +129,24 @@ function makePlan(moves,start,startT=0){
     const L=h*(0.28*S.reach+0.24*S.sign),halfW=h*0.115*S.sign,halfH=halfW*1.25,edge=h*0.29+halfW+10;
     const stay=m.items.at(-1).t-m.t+S.minShow,push=S.push*Math.min(1,m.items.length>1?0.75+stay*0.2:Math.max(0,(stay-0.6)/1.2));
     const toL=m.x,toR=W-m.x,toB=H-m.y,nearest=toB<Math.min(toL,toR)?"bottom":toL<toR?"left":"right";
-    const side=nearest==="left"?-1:nearest==="right"?1:m.x<W/2?-1:1;
+    let side=nearest==="left"?-1:nearest==="right"?1:m.x<W/2?-1:1;
     const nearX=m.x+side*h*0.75,edgeX=nearest==="left"?edge:nearest==="right"?W-edge:m.x,nearY=m.y+h*0.3,edgeY=nearest==="bottom"?H-6:nearY;
     const sx=Math.min(W-edge,Math.max(edge,nearX+(edgeX-nearX)*push)),holdX=sx+side*h*0.29;
     const alpha=Math.min(1.45,Math.max(0.03,Math.asin(Math.max(0,Math.min(1,((side<0?holdX:W-holdX)-halfW-4)/L))))); // same tilt the sign gets when he stands there
     const stand={x:sx,y:Math.min(H-4,Math.max(h*0.6+L*Math.cos(alpha)+halfH+6,nearY+(edgeY-nearY)*push))};
+    // pointing at (about) the same place as the stop before: he never stands where he stood, he moves to another spot
+    // around the cell (the other side, further out, above or below), the first one that is clearly somewhere else
+    const cell=W/N,same=(st)=>!st.intro&&Math.hypot(m.x-st.items.at(-1).x,m.y-st.items.at(-1).y)<cell*1.5;
+    const used=[];for(let j=out.length-1;j>=0&&same(out[j]);j--)used.push(out[j].stand); // every spot of this run of repeats
+    if(used.length&&used.some((u)=>Math.hypot(stand.x-u.x,stand.y-u.y)<h*0.8)){
+      const fit=(x,y)=>{const cx2=Math.min(W-edge,Math.max(edge,x)),sd=cx2<m.x?-1:cx2>m.x?1:side,hx=cx2+sd*h*0.29,
+          al=Math.min(1.45,Math.max(0.03,Math.asin(Math.max(0,Math.min(1,((sd<0?hx:W-hx)-halfW-4)/L)))));
+        return{x:cx2,y:Math.min(H-4,Math.max(h*0.6+L*Math.cos(al)+halfH+6,y)),side:sd}};
+      const cands=[fit(m.x-side*h*1.1,stand.y),fit(stand.x+side*h*1.3,stand.y),fit(stand.x,stand.y-h*1.1),fit(stand.x,stand.y+h*1.1),fit(m.x-side*h*1.1,stand.y-h*1.1)];
+      const far=(c)=>Math.min(...used.map((u)=>Math.hypot(c.x-u.x,c.y-u.y)));
+      const pick=cands.find((c)=>far(c)>=h*0.8)??cands.reduce((a,b)=>(far(b)>far(a)?b:a));
+      stand.x=pick.x;stand.y=pick.y;side=pick.side;
+    }
     const arrive=m.t-S.lead;let travel=null;
     if(pos){const prevEnd=out.length?out[out.length-1].items.at(-1).t+S.minShow:startT;const gap=Math.max(0,arrive-prevEnd),d=Math.hypot(stand.x-pos.x,stand.y-pos.y)/h;
       // the direction picks the way: (almost) straight down = rope, down at an angle = slide, otherwise walk or run;
@@ -178,7 +187,7 @@ function pose(p){
   for(const A of [armR,armL]){const pt=A===p.pointWith;A.glove.visible=pt;A.fist.visible=!pt} // the pointing hand opens into the glove
 }
 function frame(T){
-  const st=state(T),h=man.h,R=man.root;man.portal.visible=false;man.rope.visible=false;man.target.visible=false;[...man.puffs,...man.dust,...man.lines].forEach(m=>m.visible=false);
+  const st=state(T),h=man.h,R=man.root;man.portal.visible=false;man.rope.visible=false;[...man.puffs,...man.dust,...man.lines].forEach(m=>m.visible=false);
   man.hm.scale.setScalar(1);man.hm.rotation.y=0;holdIn(man.armR);setReach(man.armR,1);setReach(man.armL,1);
   if(!st){R.visible=false;return "Click the stage, or press Demo."}
   R.visible=true;R.scale.setScalar(1);let label="";
@@ -235,17 +244,22 @@ function frame(T){
   // which word of this stop is up now: each one takes over at its own time (a hair early so it's readable on the beat)
   let ci=0;m.items.forEach((x,j)=>{if(T>=x.t-0.05)ci=j});const it=m.items[ci],prev=m.items[Math.max(0,ci-1)],sw=ci?clamp((T-(it.t-0.05))/0.15):1;
   // the sign is always in the hand on the frame-edge side (m.side); the other hand points, across his body if it has to
-  const out=m.side,ptRight=out<0,up=clamp((T-m.arrive)/0.15),shX=s.x+(ptRight?1:-1)*hS*0.29*Math.cos(R.rotation.y),shY=s.y-hS*0.6;
+  const out=m.side,ptRight=out<0,up=clamp((T-m.arrive)/0.15);
   const next=plan[plan.indexOf(m)+1],leave=next?.travel?.t0??Infinity,k=Math.min(up,clamp((leave-T)/0.15));
   const cx=prev.x+(it.x-prev.x)*ease(sw),cy=prev.y+(it.y-prev.y)*ease(sw); // the hand swings from the last cell to the new one
-  const tilt=(cx>s.x?-1:1)*S.lean*up,phi=(Math.atan2(cx-shX,-(shY-cy))-tilt)*up; // leans toward the cell; the arm angle is measured from the leaning body
+  const tilt=(cx>s.x?-1:1)*S.lean*up;
+  // the pointing shoulder where the leaning body really puts it (hips at 0.22h, shoulder 0.29h out and 0.38h up from them)
+  const lx=(ptRight?1:-1)*hS*0.29,ly=hS*0.38,hipY=s.y-hS*0.22,
+    px=s.x+(lx*Math.cos(tilt)-ly*Math.sin(tilt))*Math.cos(R.rotation.y),py=hipY-(lx*Math.sin(tilt)+ly*Math.cos(tilt));
+  const phi=(Math.atan2(cx-px,-(py-cy))-tilt)*up; // the arm angle is measured from the leaning body
+  // the pointing arm stretches until the fingertip is on the cell (no ring: the hand itself shows the spot)
+  const pa=ptRight?man.armR:man.armL,dist=Math.hypot(cx-px,cy-py)/B,full=Math.max(0.35,(dist-pa.tip)/(pa.l1+pa.l2));
   const hold=ptRight?man.armL:man.armR;holdIn(hold);drawSign(it.text);
   // the sign goes out toward the frame edge: as far sideways as there's room for it, tilting up when the edge is close
   const reach=1+(S.reach-1)*k,sc=1+(S.sign-1)*k,L=hS*(0.28*reach+0.24*sc),halfW=hS*0.115*sc,holdX=s.x+out*hS*0.29;
   const room=(out<0?holdX:W-holdX)-halfW-8,alpha=m.intro?0.12:Math.min(1.45,Math.max(0.03,Math.asin(Math.max(0,Math.min(1,room/L))))); // alpha: 0 = straight up, 1.57 = straight out; the intro holds the name straight up
-  setReach(hold,reach);const holdZ=(Math.PI-alpha)*k;
+  setReach(hold,reach);setReach(pa,1+(full-1)*up);const holdZ=(Math.PI-alpha)*k;
   pose({bob:Math.sin(T*3)*h*0.008,tilt,lean:0.12*up,pointWith:up>0.3?(ptRight?man.armR:man.armL):null,...(ptRight?{arz:phi,alz:-holdZ-tilt}:{alz:phi,arz:holdZ-tilt})});
-  if(k>0.05){man.target.visible=true;man.target.position.set(it.x,-it.y,40);man.target.scale.setScalar((0.6+0.4*back(ci?sw:up))*(1+0.1*Math.sin(T*8)))}
   const pop=back(k),bump=ci?1+0.07*Math.sin(Math.PI*clamp((T-(it.t-0.05))/0.25)):1; // a little bump when the words change
   man.hm.scale.setScalar(Math.max(1,1+(S.sign-1)*pop)*bump);man.hm.rotation.y=-R.rotation.y; // grows into a readable sign, facing you
   if(m.intro)return "Intro: name close up";

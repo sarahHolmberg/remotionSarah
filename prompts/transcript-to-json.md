@@ -5,18 +5,18 @@ The speaker dictates a list of captions. Each caption has an action (the words o
 Never drop an action the speaker listed. Never invent an action the speaker did not list.
 
 === 2. REPAIR THE TRANSCRIPTION ===
-- Grid: 15 columns A to O (left to right) and 15 rows 1 to 15 (top to bottom). A cell is one capital letter plus a number, e.g. E9, J1, G14. Only A-O and 1-15 are valid. If a cell is invalid, use the nearest valid one.
-- Spoken letters are often misheard. Map them: "key"/"kay" = K, "jay" = J, "eye" = I, "age"/"aitch" = H, "gee" = G, "dee" = D, "bee" = B, "see"/"sea" = C, "eff" = F, "el"/"elle" = L, "em" = M, "en" = N, "oh" = O, "eh" = A, "e" = E.
+- Grid: 20 columns A to T (left to right) and 20 rows 1 to 20 (top to bottom). A cell is one capital letter plus a number, e.g. E9, J1, R17. Only A-T and 1-20 are valid. If a cell is invalid, use the nearest valid one.
+- Spoken letters are often misheard. Map them: "key"/"kay" = K, "jay" = J, "eye" = I, "age"/"aitch" = H, "gee" = G, "dee" = D, "bee" = B, "see"/"sea" = C, "eff" = F, "el"/"elle" = L, "em" = M, "en" = N, "oh" = O, "eh" = A, "e" = E, "pee" = P, "cue"/"queue" = Q, "ar"/"are" = R, "ess" = S, "tee"/"tea" = T.
 - Times are split by the transcriber. "5.3 16" means 5.316. "8.4 8.5" means 8.485. Rule: a time with one decimal followed by a stray number fragment is merged into a 3-decimal time. Times are plain numbers in seconds. A stray letter stuck to a time ("L11.209") is dropped.
 - Remove repeated words and stutters ("Cross kick Action Cross kick" is one caption; "Pull. Pull up. Action, pull up." is one caption "pull up"). Ignore filler and words that are not data ("Target bubble", "for it", "right now", "okay", "I mean").
 - "2 cells" or several cells listed for one action: put all of those cells in the cells list. Use only cells the speaker said.
-- If a caption has no cell, use ["H8"]. If a caption has no time, estimate one evenly between its neighbours.
+- If a caption has no cell, use ["J10"]. If a caption has no time, estimate one evenly between its neighbours.
 - Sort all captions by time, ascending. Give ids 1, 2, 3, ... in that order. If two times are equal, move the later one 0.05s later.
 - If the speaker spells a name out ("R-E-V-H-E-I-M") or says it in parts ("Lena and then XR"), use that spelling. A name said twice because of the spelling is written once.
 
 === 3. THE CAPTIONS (WHAT THE MASCOT DOES) ===
 Every caption is an object: {"id": n, "text": "...", "from": t, "to": t, "cells": ["E9"], "mode": "center", "out": "default"}
-- The FIRST caption (id 1) is the NAME when the speaker gives a name: the mascot opens with a close-up, holding the name on his sign. text = the full name written normally (e.g. "Stella Revheim"). from = the time the name appears. to = from + 0.266. cells = the cells given, or ["I5"] if none. out = the time the name disappears as a number, or "default" if none is given.
+- The FIRST caption (id 1) is the NAME when the speaker gives a name: the mascot opens with a close-up, holding the name on his sign. text = the full name written normally (e.g. "Stella Revheim"). from = the time the name appears. to = from + 0.266. cells = the cells given, or ["L7"] if none. out = the time the name disappears as a number, or "default" if none is given.
 - Every other caption is an action. text = the action in short lowercase words, as spoken, cleaned up ("kick out", "hand down the middle"). The words must fit on the sign: keep the speaker's words but drop filler, so most actions are 1 to 4 words. from = its time. cells = its target cells. mode is always "center".
 - The mascot runs to the FIRST cell in the list and points at it. When an action has several cells, put the cell of the main body part first (the one the speaker said first, unless they say otherwise).
 - Only add "tail": "<cell>" to a caption if the speaker explicitly says where the tail should point (only used by the classic bubbles, the mascot ignores it).
@@ -43,7 +43,7 @@ Use "video.mp4" for video.file unless the speaker names the video file.
 {
   "version": 1,
   "video": {"file": "video.mp4"},
-  "grid": {"size": 15},
+  "grid": {"size": 20},
   "fps": 30,
   "style": {
     "type": "comic-bubble",
@@ -52,7 +52,7 @@ Use "video.mp4" for video.file unless the speaker names the video file.
     "font": {"family": "Comic Neue", "weight": 700, "sizeCells": 0.4, "capitals": true},
     "outlineCells": 0.05,
     "ballRadiusCells": 0.25,
-    "tail": {"enabled": true, "defaultTarget": "H8", "maxLengthCells": 1.8, "reach": 0.6}
+    "tail": {"enabled": true, "defaultTarget": "J10", "maxLengthCells": 2.4, "reach": 0.6}
   },
   "timing": {
     "exitFadeSeconds": 0.05,
@@ -86,7 +86,7 @@ Keep the values above unless the speaker clearly asks for a change:
 === 8. CHECK BEFORE YOU ANSWER (silently) ===
 1. Valid JSON: double quotes, no trailing commas, no comments, numbers not in quotes. Quotes inside the caption text are escaped (\").
 2. Every action the speaker listed is there, sorted by time, ids 1..n with no gaps.
-3. Every cell is a letter A-O plus a number 1-15, and the main cell is first.
+3. Every cell is a letter A-T plus a number 1-20, and the main cell is first.
 4. All timing rules in section 4 hold for every caption.
 5. "username" is filled in (lowercase, no @, no spaces). The post caption uses @username for every mention of the person, or is "" if none was dictated.
 6. Nothing outside the JSON object.
@@ -94,7 +94,7 @@ Keep the values above unless the speaker clearly asks for a change:
 === EXAMPLE ===
 Transcript: "The account is Stella Revheim, Revheim as in R-E-V-H-E-I-M. Name appears at 1.085 and disappears at 2.553. Action kick out time 3.045 target cell E9. Action swing hands target cells key 4 and F5, time 3.8. Action cross jump target cell G14 time 5.3 16. Caption, Stella with the smoothest footwork hashtag dance."
 Captions part of the correct answer:
-    {"id": 1, "text": "Stella Revheim", "from": 1.085, "to": 1.351, "cells": ["I5"], "mode": "center", "out": 2.553},
+    {"id": 1, "text": "Stella Revheim", "from": 1.085, "to": 1.351, "cells": ["L7"], "mode": "center", "out": 2.553},
     {"id": 2, "text": "kick out", "from": 3.045, "to": 3.245, "cells": ["E9"], "mode": "center", "out": "default"},
     {"id": 3, "text": "swing hands", "from": 3.8, "to": 4.0, "cells": ["K4", "F5"], "mode": "center", "out": "default"},
     {"id": 4, "text": "cross jump", "from": 5.316, "to": 5.516, "cells": ["G14"], "mode": "center", "out": "default"}
