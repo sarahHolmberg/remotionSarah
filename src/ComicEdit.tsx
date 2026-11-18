@@ -595,7 +595,17 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
           </g>
         )}
       </svg>
-      {mascotMode && <MascotLayer moves={mascotMoves} settings={spec.mascot} width={width} height={height} grid={N} t={t} />}
+      {mascotMode && (
+        <MascotLayer
+          moves={mascotMoves}
+          settings={spec.mascot}
+          width={width}
+          height={height}
+          grid={N}
+          t={t}
+          outro={outroSec > 0 ? {start: outroStart, dur: outroSec, text: outroText, fill: OUTRO_FILL, textAt: OUTRO_TEXT} : null}
+        />
+      )}
       {real3d && bubbles3d.length > 0 && <Bubbles3DLayer bubbles={bubbles3d} width={width} height={height} fill={style.fill} ink={style.ink} outline={lw} opacity={1 - seeThrough} />}
 
       <svg width={width} height={height} style={{position: "absolute", inset: 0}}>
@@ -648,7 +658,7 @@ export const ComicEdit = (spec: Spec & {videoSrc?: string; pictureSrc?: string})
             </g>
           );
         })}
-        {outroLayer()}
+        {!mascotMode && outroLayer()}
       </svg>
     </AbsoluteFill>
   );

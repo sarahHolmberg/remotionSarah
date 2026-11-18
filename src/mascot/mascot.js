@@ -10,8 +10,8 @@
 //   m.frame(t)                                pose everything for time t (pure: the same t always gives the same picture); returns a label
 //   m.plan, m.man, m.state(t), m.refreshText()
 
-// the settings Sarah chose (8 Nov 2026)
-export const DEFAULTS = {size: 12.5, walk: 1.4, run: 4.5, outline: 1.5, turn: 0.2, lead: 0.2, minShow: 0.85, sign: 5.8, reach: 2.4, jump: 0.8, lean: 0.3, skip: 0.9, push: 1, intro: 2.55};
+// the settings Sarah chose (18 Nov 2026)
+export const DEFAULTS = {size: 8.5, walk: 1.4, run: 4.5, outline: 1.5, turn: 0.2, lead: 0.2, minShow: 0.85, sign: 7.7, reach: 2.4, jump: 0.8, lean: 0.3, skip: 0.9, push: 1, intro: 2.55};
 
 // the sliders for every setting, shared by the playground and the editor: [key, label, min, max, step, unit]
 export const SLIDERS = [["size","Size",8,30,0.5,"% of height"],["walk","Walk speed",0.5,3,0.1,"heights/s"],["run","Run speed",2,9,0.1,"heights/s"],
@@ -20,7 +20,8 @@ export const SLIDERS = [["size","Size",8,30,0.5,"% of height"],["walk","Walk spe
   ["jump","Jump up to",0,3,0.1,"heights"],["lean","Lean in",0,0.5,0.02,"rad"],["minShow","Words at least",0.2,1.5,0.05,"s"]];
 
 export function createMascot(THREE, S) {
-let W = 400, H = 711, N = 20, moves = [], start = null, plan = [], man;
+let W = 400, H = 711, N = 20, moves = [], start = null, plan = [], man, outro = null;
+const tmp = new THREE.Vector3();
 const world = new THREE.Group();
 world.add(new THREE.AmbientLight(0xffffff, Math.PI * 0.62));
 const sun = new THREE.DirectionalLight(0xffffff, Math.PI * 0.5);
@@ -69,8 +70,8 @@ function build(){
   // the hand mirror in his right hand: handle, gold oval rim, glass
   const hm=new THREE.Group();const handle=solid(new THREE.CapsuleGeometry(h*0.022,h*0.1,5,10),gold);handle.position.y=h*0.07;hm.add(handle);
   const rim=solid(new THREE.TorusGeometry(h*0.075,h*0.018,10,32),gold);rim.position.y=h*0.21;rim.scale.y=1.25;hm.add(rim);
-  const hc=document.createElement("canvas");hc.width=400;hc.height=500;const htex=new THREE.CanvasTexture(hc);htex.colorSpace=THREE.SRGBColorSpace;
-  const hg=new THREE.Mesh(new THREE.CircleGeometry(h*0.07,40),new THREE.MeshBasicMaterial({map:htex}));hg.position.set(0,h*0.21,h*0.022);hg.scale.y=1.25;hm.add(hg);
+  const hc=document.createElement("canvas");hc.width=1200;hc.height=1500; /* sharp even when the outro blows it up to the whole screen */const htex=new THREE.CanvasTexture(hc);htex.colorSpace=THREE.SRGBColorSpace;
+  const hg=new THREE.Mesh(new THREE.CircleGeometry(h*0.07,64),new THREE.MeshBasicMaterial({map:htex}));hg.position.set(0,h*0.21,h*0.022);hg.scale.y=1.25;hm.add(hg);
   hm.rotation.z=Math.PI;armR.hand.add(hm); /* glass beyond the fist, facing the camera; it grows into a sign when he holds it up */
   const rope=new THREE.Mesh(new THREE.CylinderGeometry(h*0.018,h*0.018,1,8),new THREE.MeshStandardMaterial({color:0x7a5532,roughness:0.9}));rope.visible=false;world.add(rope);
   const dust=[...Array(8)].map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(h*0.045,10,8),new THREE.MeshBasicMaterial({color:0xe3ddd2,transparent:true}));m.visible=false;world.add(m);return m});
@@ -80,15 +81,16 @@ function build(){
   const portal=new THREE.Group(),ring=new THREE.Mesh(new THREE.TorusGeometry(h*0.34,h*0.035,10,48),new THREE.MeshBasicMaterial({color:0x111111}));
   const disc=new THREE.Mesh(new THREE.CircleGeometry(h*0.33,48),new THREE.MeshBasicMaterial({color:0xcfcfe0,transparent:true,opacity:.85}));portal.add(disc,ring);portal.scale.y=1.25;world.add(portal);
   const puffs=[...Array(7)].map(()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(h*0.05,10,8),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true}));world.add(m);return m});
-  world.add(root);man={root,body,hips,torso,armR,armL,legR,legL,shadow,gc,gtex,portal,puffs,h,text:undefined,hm,hc,htex,signText:undefined,rope,dust,lines};drawGlass(null,0);drawSign("");
+  world.add(root);man={root,body,hips,torso,armR,armL,legR,legL,shadow,gc,gtex,portal,puffs,h,text:undefined,hm,hg,hc,htex,signText:undefined,rope,dust,lines};drawGlass(null,0);drawSign("");
 }
 // the hand mirror's glass: lavender with a shine stripe, and the move's words big enough to read when he holds it up
-function drawSign(text){
-  if(man.signText===text)return;man.signText=text;const g=man.hc.getContext("2d"),w=400,hh=500;
-  g.fillStyle="#cbcbdd";g.fillRect(0,0,w,hh);g.save();g.translate(w/2,hh/2);g.rotate(-0.6);g.fillStyle="rgba(255,255,255,.7)";g.fillRect(-120,-400,36,800);g.restore();
+// fitW/fitH: the share of the oval's width/height the words may use (the outro uses less: most of its oval is off screen)
+function drawSign(text,fitW=0.62,fitH=0.62){
+  const key=text+"|"+fitW.toFixed(3)+"|"+fitH.toFixed(3);if(man.signText===key)return;man.signText=key;const g=man.hc.getContext("2d"),w=man.hc.width,hh=man.hc.height,u=w/400;
+  g.fillStyle="#cbcbdd";g.fillRect(0,0,w,hh);g.save();g.translate(w/2,hh/2);g.rotate(-0.6);g.fillStyle="rgba(255,255,255,.7)";g.fillRect(-120*u,-400*u,36*u,800*u);g.restore();
   if(text){g.fillStyle="rgba(255,255,255,.8)";g.fillRect(0,0,w,hh);g.fillStyle="#111";g.textAlign="center";g.textBaseline="middle";
-    const words=String(text).toUpperCase().split(/\s+/);let fs=120;const set=()=>g.font=`700 ${fs}px "Comic Neue",system-ui`;set();
-    while(fs>20&&(words.length*fs*1.05>hh*0.62||words.some(x=>g.measureText(x).width>w*0.62))){fs-=4;set()} // inside the oval
+    const words=String(text).toUpperCase().split(/\s+/);let fs=120*u;const set=()=>g.font=`700 ${fs}px "Comic Neue",system-ui`;set();
+    while(fs>20*u&&(words.length*fs*1.05>hh*fitH||words.some(x=>g.measureText(x).width>w*fitW))){fs-=4*u;set()} // inside the oval
     g.lineJoin="round";g.lineWidth=fs*0.11;g.strokeStyle="#111"; // a thick outline makes the letters read bolder than the font's heaviest weight
     words.forEach((x,i)=>{const y=hh/2+(i-(words.length-1)/2)*fs*1.05;g.strokeText(x,w/2,y);g.fillText(x,w/2,y)})}
   man.htex.needsUpdate=true;
@@ -194,6 +196,7 @@ function frame(T){
   const place=(x,y)=>{R.position.set(x,-y,0)};
   const showPortal=(x,y,s)=>{man.portal.visible=s>0.01;man.portal.position.set(x,-(y-h*0.45),-5);man.portal.scale.set(s,s*1.25,s);man.portal.children[0].rotation.z=T*6};
   if(st.kind==="before"){R.visible=false;return "Waiting for the first move"}
+  if(outro&&T>=outro.start)return outroFrame(T,R);
   if(st.kind==="enter"&&st.m.intro){ // pops up close to the camera
     const s=st.m.stand;place(s.x,s.y);R.rotation.y=-st.m.side*S.turn;R.scale.setScalar(Math.max(0.01,S.intro*back(st.u)));pose({});return "Intro (close up)"}
   if(st.kind==="enter"){ // drops in from above the frame and lands with a squash
@@ -265,6 +268,31 @@ function frame(T){
   if(m.intro)return "Intro: name close up";
   return m.items.length>1?`Point + sign (${ci+1}/${m.items.length}, same spot)`:"Point + sign";
 }
+// ---------- the outro ----------
+// He walks toward the camera holding the sign up; he and the sign grow until the sign's glass covers the whole screen
+// (by "fill" of the outro time), then the outro text pops onto it (at "textAt", when the pop sound plays).
+const OUTRO_GROW = 3; // how much bigger he gets walking up to the camera (the sign grows the rest of the way)
+function outroFrame(T,R){
+  const h=man.h,o=outro,u=clamp((T-o.start)/o.dur),w=clamp(u/o.fill),e=ease(w);
+  const st0=state(o.start),from=st0?(st0.kind==="travel"?st0.tr.to:st0.m.stand):{x:W/2,y:H*0.85};
+  R.position.set(from.x,-from.y,0);R.rotation.y=(st0?.m?.side?-st0.m.side*S.turn:0)*(1-e);
+  const Rs=Math.pow(OUTRO_GROW,e);R.scale.setScalar(Rs);
+  // walking toward you (legs swing toward the camera), the sign held straight up in the right hand; settles as he arrives
+  const ph=(T-o.start)*10,sw=Math.sin(ph)*(1-clamp((w-0.8)/0.2));
+  holdIn(man.armR);setReach(man.armR,S.reach);
+  pose({ll:0.6*sw,lr:-0.6*sw,kll:0.35+0.35*Math.sin(ph+1.6),klr:0.35+0.35*Math.sin(ph+1.6+Math.PI),al:0.5*sw,alz:-0.35,arz:Math.PI,bob:Math.abs(sw)*h*0.03});
+  // the glass (an oval 1.25 times as tall as wide) has to reach past the screen's corners
+  const need=Math.hypot(W/2,H/2/1.25)*1.06/(h*0.07),signNow=Math.pow(S.sign,1-e)*Math.pow(need,e)/Rs;
+  const txt=u>=o.textAt,pop=txt?1+0.06*Math.sin(Math.PI*clamp((T-(o.start+o.textAt*o.dur))/0.2)):1;
+  man.hm.scale.setScalar(signNow*pop);man.hm.rotation.y=0;
+  const rx=need*h*0.07; /* the glass's half-width once it fills the screen: the words fit the part of it that is on screen */
+  drawSign(txt?o.text:"",Math.min(0.62,(0.82*W)/(2*rx)),Math.min(0.62,(0.5*H)/(2*1.25*rx)));
+  // slide him so the sign's centre goes from where it is to the middle of the screen
+  world.updateMatrixWorld(true);man.hg.getWorldPosition(tmp);world.worldToLocal(tmp);
+  const nx=tmp.x,ny=-tmp.y,tx=nx+(W/2-nx)*e,ty=ny+(H/2-ny)*e;R.position.x+=tx-nx;R.position.y-=ty-ny;
+  return txt?"Outro: text on the sign":e<1?"Outro: walking up to the camera":"Outro: sign fills the screen";
+}
+
 // stretch an arm (f = 1 normal): the upper and lower arm get longer, the hand moves out with them
 function setReach(arm,f){for(const [seg,L] of [[arm.up,arm.l1],[arm.lo,arm.l2]]){const p=seg.children[0],end=seg.children[1];p.scale.y=f;p.position.y=-L*f/2;end.position.y=-L*f}}
 // the hand mirror goes to whichever hand isn't pointing
@@ -285,6 +313,10 @@ return {
   rebuild() {
     build();
     replan();
+  },
+  // the outro: {start, dur (seconds), text, fill (share of dur to cover the screen), textAt (share of dur the text appears)} or null
+  setOutro(o) {
+    outro = o && o.dur > 0 ? {fill: 0.55, textAt: 0.6, text: "MIRRORS", ...o} : null;
   },
   setMoves(list, from = null) {
     moves = list;

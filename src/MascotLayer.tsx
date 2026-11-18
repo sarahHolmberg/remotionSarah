@@ -8,9 +8,10 @@ import * as THREE from "three";
 import {ThreeCanvas} from "@remotion/three";
 import {createMascot, DEFAULTS, type MascotMove, type MascotSettings} from "./mascot/mascot";
 
-type Props = {moves: MascotMove[]; settings?: MascotSettings; width: number; height: number; grid: number; t: number};
+type Outro = {start: number; dur: number; text: string; fill: number; textAt: number} | null;
+type Props = {moves: MascotMove[]; settings?: MascotSettings; width: number; height: number; grid: number; t: number; outro?: Outro};
 
-export const MascotLayer = ({moves, settings, width, height, grid, t}: Props) => {
+export const MascotLayer = ({moves, settings, width, height, grid, t, outro = null}: Props) => {
   const key = JSON.stringify(settings ?? {});
   const mascot = useMemo(() => {
     const m = createMascot(THREE, {...DEFAULTS, ...settings});
@@ -18,6 +19,7 @@ export const MascotLayer = ({moves, settings, width, height, grid, t}: Props) =>
     return m;
   }, [key, width, height, grid]);
   useMemo(() => mascot.setMoves(moves), [mascot, moves]);
+  useMemo(() => mascot.setOutro(outro), [mascot, JSON.stringify(outro)]); // the mascot does the outro: walks up until his sign fills the screen
   useEffect(() => void document.fonts?.ready.then(() => mascot.refreshText()), [mascot]); // redraw the sign once the comic font is there
   mascot.frame(t); // pose him for this frame before the canvas draws it (he depends only on t, so every render frame is exact)
   return (

@@ -72,7 +72,7 @@ setTimeout(()=>{if(!window.__mascotRunning)showErr("the 3D library did not start
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js";
 
 // src/mascot/mascot.js
-var DEFAULTS = { size: 12.5, walk: 1.4, run: 4.5, outline: 1.5, turn: 0.2, lead: 0.2, minShow: 0.85, sign: 5.8, reach: 2.4, jump: 0.8, lean: 0.3, skip: 0.9, push: 1, intro: 2.55 };
+var DEFAULTS = { size: 8.5, walk: 1.4, run: 4.5, outline: 1.5, turn: 0.2, lead: 0.2, minShow: 0.85, sign: 7.7, reach: 2.4, jump: 0.8, lean: 0.3, skip: 0.9, push: 1, intro: 2.55 };
 var SLIDERS = [
   ["size", "Size", 8, 30, 0.5, "% of height"],
   ["walk", "Walk speed", 0.5, 3, 0.1, "heights/s"],
@@ -90,7 +90,8 @@ var SLIDERS = [
   ["minShow", "Words at least", 0.2, 1.5, 0.05, "s"]
 ];
 function createMascot(THREE2, S2) {
-  let W2 = 400, H2 = 711, N2 = 20, moves2 = [], start = null, plan = [], man;
+  let W2 = 400, H2 = 711, N2 = 20, moves2 = [], start = null, plan = [], man, outro = null;
+  const tmp = new THREE2.Vector3();
   const world = new THREE2.Group();
   world.add(new THREE2.AmbientLight(16777215, Math.PI * 0.62));
   const sun = new THREE2.DirectionalLight(16777215, Math.PI * 0.5);
@@ -219,11 +220,11 @@ function createMascot(THREE2, S2) {
     rim.scale.y = 1.25;
     hm.add(rim);
     const hc = document.createElement("canvas");
-    hc.width = 400;
-    hc.height = 500;
+    hc.width = 1200;
+    hc.height = 1500;
     const htex = new THREE2.CanvasTexture(hc);
     htex.colorSpace = THREE2.SRGBColorSpace;
-    const hg = new THREE2.Mesh(new THREE2.CircleGeometry(h * 0.07, 40), new THREE2.MeshBasicMaterial({ map: htex }));
+    const hg = new THREE2.Mesh(new THREE2.CircleGeometry(h * 0.07, 64), new THREE2.MeshBasicMaterial({ map: htex }));
     hg.position.set(0, h * 0.21, h * 0.022);
     hg.scale.y = 1.25;
     hm.add(hg);
@@ -259,21 +260,22 @@ function createMascot(THREE2, S2) {
       return m;
     });
     world.add(root);
-    man = { root, body, hips, torso, armR, armL, legR, legL, shadow, gc, gtex, portal, puffs, h, text: void 0, hm, hc, htex, signText: void 0, rope, dust, lines };
+    man = { root, body, hips, torso, armR, armL, legR, legL, shadow, gc, gtex, portal, puffs, h, text: void 0, hm, hg, hc, htex, signText: void 0, rope, dust, lines };
     drawGlass(null, 0);
     drawSign("");
   }
-  function drawSign(text) {
-    if (man.signText === text) return;
-    man.signText = text;
-    const g = man.hc.getContext("2d"), w = 400, hh = 500;
+  function drawSign(text, fitW = 0.62, fitH = 0.62) {
+    const key = text + "|" + fitW.toFixed(3) + "|" + fitH.toFixed(3);
+    if (man.signText === key) return;
+    man.signText = key;
+    const g = man.hc.getContext("2d"), w = man.hc.width, hh = man.hc.height, u = w / 400;
     g.fillStyle = "#cbcbdd";
     g.fillRect(0, 0, w, hh);
     g.save();
     g.translate(w / 2, hh / 2);
     g.rotate(-0.6);
     g.fillStyle = "rgba(255,255,255,.7)";
-    g.fillRect(-120, -400, 36, 800);
+    g.fillRect(-120 * u, -400 * u, 36 * u, 800 * u);
     g.restore();
     if (text) {
       g.fillStyle = "rgba(255,255,255,.8)";
@@ -282,11 +284,11 @@ function createMascot(THREE2, S2) {
       g.textAlign = "center";
       g.textBaseline = "middle";
       const words = String(text).toUpperCase().split(/\s+/);
-      let fs = 120;
+      let fs = 120 * u;
       const set = () => g.font = `700 ${fs}px "Comic Neue",system-ui`;
       set();
-      while (fs > 20 && (words.length * fs * 1.05 > hh * 0.62 || words.some((x) => g.measureText(x).width > w * 0.62))) {
-        fs -= 4;
+      while (fs > 20 * u && (words.length * fs * 1.05 > hh * fitH || words.some((x) => g.measureText(x).width > w * fitW))) {
+        fs -= 4 * u;
         set();
       }
       g.lineJoin = "round";
@@ -474,6 +476,7 @@ function createMascot(THREE2, S2) {
       R.visible = false;
       return "Waiting for the first move";
     }
+    if (outro && T >= outro.start) return outroFrame(T, R);
     if (st.kind === "enter" && st.m.intro) {
       const s2 = st.m.stand;
       place(s2.x, s2.y);
@@ -640,6 +643,32 @@ function createMascot(THREE2, S2) {
     if (m.intro) return "Intro: name close up";
     return m.items.length > 1 ? `Point + sign (${ci + 1}/${m.items.length}, same spot)` : "Point + sign";
   }
+  const OUTRO_GROW = 3;
+  function outroFrame(T, R) {
+    const h = man.h, o = outro, u = clamp((T - o.start) / o.dur), w = clamp(u / o.fill), e = ease(w);
+    const st0 = state(o.start), from = st0 ? st0.kind === "travel" ? st0.tr.to : st0.m.stand : { x: W2 / 2, y: H2 * 0.85 };
+    R.position.set(from.x, -from.y, 0);
+    R.rotation.y = (st0?.m?.side ? -st0.m.side * S2.turn : 0) * (1 - e);
+    const Rs = Math.pow(OUTRO_GROW, e);
+    R.scale.setScalar(Rs);
+    const ph = (T - o.start) * 10, sw = Math.sin(ph) * (1 - clamp((w - 0.8) / 0.2));
+    holdIn(man.armR);
+    setReach(man.armR, S2.reach);
+    pose({ ll: 0.6 * sw, lr: -0.6 * sw, kll: 0.35 + 0.35 * Math.sin(ph + 1.6), klr: 0.35 + 0.35 * Math.sin(ph + 1.6 + Math.PI), al: 0.5 * sw, alz: -0.35, arz: Math.PI, bob: Math.abs(sw) * h * 0.03 });
+    const need = Math.hypot(W2 / 2, H2 / 2 / 1.25) * 1.06 / (h * 0.07), signNow = Math.pow(S2.sign, 1 - e) * Math.pow(need, e) / Rs;
+    const txt = u >= o.textAt, pop = txt ? 1 + 0.06 * Math.sin(Math.PI * clamp((T - (o.start + o.textAt * o.dur)) / 0.2)) : 1;
+    man.hm.scale.setScalar(signNow * pop);
+    man.hm.rotation.y = 0;
+    const rx = need * h * 0.07;
+    drawSign(txt ? o.text : "", Math.min(0.62, 0.82 * W2 / (2 * rx)), Math.min(0.62, 0.5 * H2 / (2 * 1.25 * rx)));
+    world.updateMatrixWorld(true);
+    man.hg.getWorldPosition(tmp);
+    world.worldToLocal(tmp);
+    const nx = tmp.x, ny = -tmp.y, tx = nx + (W2 / 2 - nx) * e, ty = ny + (H2 / 2 - ny) * e;
+    R.position.x += tx - nx;
+    R.position.y -= ty - ny;
+    return txt ? "Outro: text on the sign" : e < 1 ? "Outro: walking up to the camera" : "Outro: sign fills the screen";
+  }
   function setReach(arm, f) {
     for (const [seg, L] of [[arm.up, arm.l1], [arm.lo, arm.l2]]) {
       const p = seg.children[0], end = seg.children[1];
@@ -666,6 +695,10 @@ function createMascot(THREE2, S2) {
     rebuild() {
       build();
       replan();
+    },
+    // the outro: {start, dur (seconds), text, fill (share of dur to cover the screen), textAt (share of dur the text appears)} or null
+    setOutro(o) {
+      outro = o && o.dur > 0 ? { fill: 0.55, textAt: 0.6, text: "MIRRORS", ...o } : null;
     },
     setMoves(list, from = null) {
       moves2 = list;

@@ -10,6 +10,7 @@ export type Mascot = {
   rebuild(): void;
   setMoves(moves: MascotMove[], start?: {x: number; y: number} | null): void;
   frame(t: number): string;
+  setOutro(outro: {start: number; dur: number; text?: string; fill?: number; textAt?: number} | null): void;
   refreshText(): void;
   readonly plan: unknown[];
 };
