@@ -8,13 +8,13 @@ import {createMascot, DEFAULTS, SLIDERS} from "../src/mascot/mascot.js";
 // the settings Sarah chose (7 Nov 2026); these are the defaults
 const S = {...DEFAULTS};
 /* SLIDERS live in src/mascot/mascot.js, shared with the editor */
-try{Object.assign(S,JSON.parse(localStorage.getItem("mascot-settings-5")||"{}"))}catch{}
+try{Object.assign(S,JSON.parse(localStorage.getItem("mascot-settings-6")||"{}"))}catch{}
 const sl=document.getElementById("sliders");
 for(const [k,label,mn,mx,st,unit] of SLIDERS){
   const d=document.createElement("div");d.className="sl";d.title=unit;
   d.innerHTML=`<label for="s-${k}">${label}</label><input type="range" id="s-${k}" min="${mn}" max="${mx}" step="${st}" value="${S[k]}"><output>${S[k]}</output>`;
   const inp=d.querySelector("input"),out=d.querySelector("output");
-  inp.oninput=()=>{S[k]=+inp.value;out.textContent=inp.value;try{localStorage.setItem("mascot-settings-5",JSON.stringify(S))}catch{};M.rebuild();legend()};
+  inp.oninput=()=>{S[k]=+inp.value;out.textContent=inp.value;try{localStorage.setItem("mascot-settings-6",JSON.stringify(S))}catch{};M.rebuild();legend()};
   sl.appendChild(d);
 }
 
