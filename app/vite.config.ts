@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {makeProfileHandler} from "../server/profiles.mjs";
 import {makeInboxHandler} from "../server/inbox.mjs";
+import {handleBackground} from "../server/background.mjs";
 
 const ROOT = process.cwd(); // run `npm run app` from the repo root
 const PROPS = "scripts/export.json"; // the JSON the render reads (your own scripts/edit.json is not touched)
@@ -24,6 +25,7 @@ const renderApi = (): Plugin => ({
     const inbox = makeInboxHandler(ROOT); // video links from the grid player (server/inbox.mjs)
     server.middlewares.use((req, res, next) => {
       const url = new URL(req.url ?? "", "http://x");
+      if (handleBackground(req, res, url)) return; // the password in front of "See background"
       if (!url.pathname.startsWith("/api/")) return next();
       log(`${req.method} ${url.pathname}`);
       if (profiles(req, res, url)) return;

@@ -478,14 +478,25 @@ const rootEl = document.getElementById("root");
 console.log(`[Editor] 0. mounting (root element ${rootEl ? "found" : "MISSING"})`);
 // The page starts in the simple view (app/simple.tsx); "See background" shows the full editor + preview, "Simple view" goes back.
 // The simple view stays mounted (only hidden), so what was typed there is kept while the full view is open.
+// "See background" first asks the server for the background password: the browser shows its own login box
+// (any username; the password is BACKGROUND_PASSWORD on the server, see server/background.mjs)
 const App = () => {
   const [advanced, setAdvanced] = useState(false);
+  const unlock = async () => {
+    try {
+      const r = await fetch("/background-auth/check", {cache: "no-store"});
+      if (r.ok) return setAdvanced(true);
+      alert("Wrong password, or the login was cancelled.");
+    } catch (e) {
+      alert(`Could not check the password: ${(e as Error).message}`);
+    }
+  };
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [advanced]);
   return (
     <>
-      <SimpleView visible={!advanced} onAdvanced={() => setAdvanced(true)} />
+      <SimpleView visible={!advanced} onAdvanced={unlock} />
       {advanced && <Editor onSimple={() => setAdvanced(false)} />}
     </>
   );

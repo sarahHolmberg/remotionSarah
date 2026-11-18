@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import {renderMedia, selectComposition} from "@remotion/renderer"; // installed with @remotion/cli, same version
 import {makeProfileHandler} from "./profiles.mjs";
 import {isInboxCall, makeInboxHandler} from "./inbox.mjs";
+import {BACKGROUND_PATH, handleBackground} from "./background.mjs";
 import {makeBufferHandler} from "./buffer.mjs";
 import {isInstagramTask, makeInstagramHandler} from "./instagram.mjs";
 
@@ -172,6 +173,7 @@ const render = async (req, res) => {
 http
   .createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
+    if (url.pathname === BACKGROUND_PATH) return void handleBackground(req, res, url); // its own password (server/background.mjs)
     if (!authorized(req) && !isInstagramTask(req, url) && !isInboxCall(req, url)) {
       res.writeHead(401, {"WWW-Authenticate": 'Basic realm="Comic editor"'});
       return res.end("Password needed.");
