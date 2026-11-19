@@ -2,3 +2,5 @@ node_modules
 dist
 build
 inbox
+tasks
+tasks-videos

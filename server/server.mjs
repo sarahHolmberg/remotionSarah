@@ -16,6 +16,7 @@ import {renderMedia, selectComposition} from "@remotion/renderer"; // installed 
 import {makeProfileHandler} from "./profiles.mjs";
 import {isInboxCall, makeInboxHandler} from "./inbox.mjs";
 import {BACKGROUND_PATH, handleBackground} from "./background.mjs";
+import {makeTasks} from "./tasks.mjs";
 import {makeBufferHandler} from "./buffer.mjs";
 import {isInstagramTask, makeInstagramHandler} from "./instagram.mjs";
 
@@ -34,8 +35,11 @@ const profiles = makeProfileHandler(ROOT);
 const inbox = makeInboxHandler(ROOT);
 const buffer = makeBufferHandler(OUT);
 const instagram = makeInstagramHandler(OUT);
+let tasks; // made just before the server starts (it needs authorized() and lockedRender())
 
 const log = (m) => console.log(`[Server] ${m}`);
+// a stray failure somewhere in the background (a library's own download, a dropped connection) is logged, never kills the server
+process.on("unhandledRejection", (e) => console.log(JSON.stringify({severity: "ERROR", message: `[Server] unhandled: ${e?.message ?? e}`})));
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -116,6 +120,43 @@ const upload = (req, res, url) => {
   });
 };
 
+// render a JSON (already with its defaults) into an mp4 file; progress lines go to say()
+const renderToFile = async (spec, outFile, say = () => {}) => {
+  const started = Date.now();
+  say(`Starting: ComicEdit, concurrency ${CONCURRENCY}`);
+  const composition = await selectComposition({serveUrl: BUNDLE, id: "ComicEdit", inputProps: spec, chromiumOptions: CHROMIUM});
+  say(`Video: ${composition.width}x${composition.height}, ${composition.durationInFrames} frames at ${composition.fps} fps`);
+  let lastPct = -1;
+  await renderMedia({
+    composition,
+    serveUrl: BUNDLE,
+    codec: "h264",
+    imageFormat: "jpeg", // same as remotion.config.ts
+    outputLocation: outFile,
+    inputProps: spec,
+    concurrency: CONCURRENCY,
+    chromiumOptions: CHROMIUM,
+    overwrite: true,
+    onProgress: ({progress, renderedFrames, encodedFrames}) => {
+      const pct = Math.floor(progress * 100);
+      if (pct === lastPct || pct % 5 !== 0) return;
+      lastPct = pct;
+      say(`${pct}%  rendered ${renderedFrames}, encoded ${encodedFrames} of ${composition.durationInFrames} frames`);
+    },
+  });
+  say(`Took ${((Date.now() - started) / 1000).toFixed(1)}s`);
+};
+// the automatic tasks wait their turn: one render at a time on this server
+const lockedRender = async (spec, outFile, say) => {
+  while (busy) await new Promise((r) => setTimeout(r, 3000));
+  busy = true;
+  try {
+    await renderToFile(spec, outFile, say);
+  } finally {
+    busy = false;
+  }
+};
+
 // 2. render the JSON, stream progress lines back. The request stays open for the whole render:
 //    Cloud Run only gives the container CPU while a request is open.
 const render = async (req, res) => {
@@ -137,30 +178,8 @@ const render = async (req, res) => {
     log(`render: ${l}`);
     res.write(`${l}\n`);
   };
-  const started = Date.now();
   try {
-    say(`Starting: ComicEdit, concurrency ${CONCURRENCY}`);
-    const composition = await selectComposition({serveUrl: BUNDLE, id: "ComicEdit", inputProps: spec, chromiumOptions: CHROMIUM});
-    say(`Video: ${composition.width}x${composition.height}, ${composition.durationInFrames} frames at ${composition.fps} fps`);
-    let lastPct = -1;
-    await renderMedia({
-      composition,
-      serveUrl: BUNDLE,
-      codec: "h264",
-      imageFormat: "jpeg", // same as remotion.config.ts
-      outputLocation: OUT,
-      inputProps: spec,
-      concurrency: CONCURRENCY,
-      chromiumOptions: CHROMIUM,
-      overwrite: true,
-      onProgress: ({progress, renderedFrames, encodedFrames}) => {
-        const pct = Math.floor(progress * 100);
-        if (pct === lastPct || pct % 5 !== 0) return;
-        lastPct = pct;
-        say(`${pct}%  rendered ${renderedFrames}, encoded ${encodedFrames} of ${composition.durationInFrames} frames`);
-      },
-    });
-    say(`Took ${((Date.now() - started) / 1000).toFixed(1)}s`);
+    await renderToFile(spec, OUT, say);
     say("[RENDER DONE]");
   } catch (e) {
     say(`[RENDER FAILED] ${e?.message ?? e}`);
@@ -170,10 +189,13 @@ const render = async (req, res) => {
   }
 };
 
+tasks = makeTasks({root: ROOT, publicDir: PUBLIC, distDir: path.join(DIST, "parrot"), render: lockedRender, authorized});
+
 http
   .createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
     if (url.pathname === BACKGROUND_PATH) return void handleBackground(req, res, url); // its own password (server/background.mjs)
+    if (tasks.handle(req, res, url)) return; // the grid player's tasks and the Parrot site, with their own keys/passwords (server/tasks.mjs)
     if (!authorized(req) && !isInstagramTask(req, url) && !isInboxCall(req, url)) {
       res.writeHead(401, {"WWW-Authenticate": 'Basic realm="Comic editor"'});
       return res.end("Password needed.");

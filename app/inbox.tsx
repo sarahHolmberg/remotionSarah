@@ -4,6 +4,45 @@
 import {useEffect, useState} from "react";
 
 type Item = {id: string; url: string; title: string; receivedAt: string};
+type Task = {taskId: string; name: string; status: string; publishAt?: string; error?: string};
+const LABEL: Record<string, string> = {needs_script: "waiting for Parrot", queued: "queued", making: "making", scheduled: "scheduled", posted: "posted", failed: "failed"};
+
+// the automatic tasks (server/tasks.mjs): how many are at each stage, and the failed ones with Retry
+const TaskLine = () => {
+  const [tasks, setTasks] = useState<Task[] | null>(null);
+  const load = () =>
+    fetch("/api/tasks")
+      .then((r) => (r.ok ? r.json() : {tasks: []}))
+      .then((d) => setTasks(d.tasks ?? []))
+      .catch(() => setTasks([]));
+  useEffect(() => {
+    void load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, []);
+  if (!tasks?.length) return null;
+  const count = (s: string) => tasks.filter((t) => t.status === s).length;
+  const summary = ["needs_script", "queued", "making", "scheduled"].filter(count).map((s) => `${count(s)} ${LABEL[s]}`).join(" · ");
+  const retry = async (id: string) => {
+    await fetch(`/api/tasks/${encodeURIComponent(id)}/retry`, {method: "POST"}).catch(() => undefined);
+    void load();
+  };
+  return (
+    <>
+      <span style={{flexBasis: "100%", height: 0}} />
+      <b>Automatic:</b>
+      <span className="hint">{summary || "nothing in progress"}</span>
+      {tasks.filter((t) => t.status === "failed").map((t) => (
+        <span key={t.taskId} style={{color: "#b3261e"}} title={t.error}>
+          ✕ {t.name} failed{" "}
+          <button className="btn" style={{minHeight: 28, padding: "2px 10px"}} onClick={() => retry(t.taskId)}>
+            Retry
+          </button>
+        </span>
+      ))}
+    </>
+  );
+};
 
 // the transcription sites, opened next to the video link. A web page can't open an incognito window itself (browsers
 // don't allow it), so these are plain links: right-click -> "Open link in incognito window", or the button opens both in new tabs.
@@ -65,6 +104,7 @@ export const InboxBar = () => {
         Open both
       </button>
       <span className="hint">incognito: right-click a link → Open link in incognito window</span>
+      <TaskLine />
     </div>
   );
 };

@@ -45,6 +45,19 @@ export const listObjects = async (prefix) => {
   return (d.items ?? []).map((o) => o.name);
 };
 
+// a whole file from the bucket, as a Buffer
+export const getObjectBuffer = async (name) => Buffer.from(await (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o/${encodeURIComponent(name)}?alt=media`)).arrayBuffer());
+// everything in the bucket added up, in bytes (used to stay inside the free storage)
+export const bucketBytes = async () => {
+  let total = 0, token = "";
+  do {
+    const d = await (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o?fields=items(size),nextPageToken&maxResults=1000${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`)).json();
+    for (const o of d.items ?? []) total += Number(o.size) || 0;
+    token = d.nextPageToken ?? "";
+  } while (token);
+  return total;
+};
+
 // ---- Cloud Tasks: one HTTP call to this server at a set time ----
 export const createTask = async ({queue, location, url, at, headers}) => {
   const parent = `projects/${await projectId()}/locations/${location}/queues/${queue}`;

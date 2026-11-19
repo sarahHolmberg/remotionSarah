@@ -191,6 +191,66 @@ const names = (list, max, notes, what) => {
   return all.filter((n) => USERNAME.test(n)).slice(0, max);
 };
 
+// Schedule one finished video as a Reel (whole video, caption, tags) + a Story (first STORY_SECONDS) at the same time.
+// b: {caption, userTags, collaborators, coverSeconds, when: "slot" | "now" | ISO time}. Returns the two jobs.
+// Used by the editor's "Post to Instagram" panel and by the automatic tasks (server/tasks.mjs).
+export const scheduleReelAndStory = async (videoFile, b, baseUrl) => {
+  const shared = {status: "scheduled", createdAt: new Date().toISOString()};
+  const notes = [];
+  const reel = {
+    ...shared,
+    id: crypto.randomBytes(8).toString("hex"),
+    type: "REELS",
+    caption: String(b.caption ?? "").slice(0, 2200),
+    userTags: names(b.userTags, 20, notes, "Tag people"),
+    collaborators: names(b.collaborators, 3, notes, "Collaborators"),
+    thumbOffsetMs: Number(b.coverSeconds) > 0 ? Math.round(Number(b.coverSeconds) * 1000) : 0,
+  };
+  if (!(Array.isArray(b.userTags) && b.userTags.length)) throw new InputError("Tag people: the dancer must be tagged (their @username).");
+  if (notes.length) reel.notes = notes;
+  const story = {...shared, id: crypto.randomBytes(8).toString("hex"), type: "STORIES", caption: "", userTags: [], collaborators: [], thumbOffsetMs: 0, reel: reel.id};
+  // when (both at the same time)
+  let at;
+  if (b.when === "now") at = new Date().toISOString();
+  else if (b.when === "slot" || !b.when) {
+    at = await nextFreeSlot();
+    if (!at) throw new InputError(`Every posting time in the next ${MAX_DAYS} days is taken.`);
+  } else {
+    const t = Date.parse(b.when);
+    if (!Number.isFinite(t) || t < Date.now() + 60000 || t > Date.now() + MAX_DAYS * 86400000) throw new InputError(`Pick a time between now and ${MAX_DAYS} days ahead.`);
+    at = new Date(t).toISOString();
+  }
+  reel.publishAt = story.publishAt = at;
+  reel.video = await putObject(randomName("videos", "mp4"), fs.readFileSync(videoFile), "video/mp4");
+  story.video = await putObject(randomName("videos", "mp4"), await cutStory(videoFile), "video/mp4");
+  story.caption = `(Story, first ${STORY_SECONDS} s)`; // only shown in the panel's list; Stories get no caption
+  const jobs = [reel, story];
+  for (const job of jobs) await putJson(jobName(job.id), job);
+  log(`jobs ${reel.id} (Reel) + ${story.id} (Story) at ${at}`);
+  if (b.when === "now") {
+    const done = [];
+    for (const job of jobs) done.push(await run(job.id)); // one after the other: each waits for Instagram to process its video
+    return done;
+  }
+  for (const job of jobs) {
+    job.task = await createTask({queue: QUEUE, location: LOCATION, url: `${baseUrl}/api/instagram/run?job=${job.id}`, at, headers: {"X-Task-Key": TASK_KEY}});
+    await putJson(jobName(job.id), job);
+  }
+  return jobs;
+};
+
+// the next free posting time (ISO), or undefined when the next MAX_DAYS are full
+export const nextFreeSlot = async () => {
+  const jobs = await allJobs();
+  const taken = new Set(jobs.filter((j) => j.status === "scheduled" || j.status === "publishing").map((j) => Date.parse(j.publishAt)));
+  return freeSlots(taken, 1)[0];
+};
+// can posting work at all? (the settings it needs are there)
+export const instagramReady = () => !!(IG_USER && TOKEN && BUCKET);
+// the jobs with these ids (missing ones left out)
+export const getJobs = async (ids) => (await Promise.all(ids.map((id) => getJson(jobName(id)).catch(() => null)))).filter(Boolean);
+export {InputError};
+
 // Is this the Cloud Task calling? Then the website password is not needed for this one request.
 export const isInstagramTask = (req, url) => {
   const k = String(req.headers["x-task-key"] ?? "");
@@ -228,50 +288,7 @@ export const makeInstagramHandler = (outFile) => {
         for await (const c of req) body += c;
         const b = JSON.parse(body);
         if (!fs.existsSync(outFile)) return send(res, 400, {error: "No exported video yet: press Export video first."});
-        const shared = {status: "scheduled", createdAt: new Date().toISOString()};
-        const notes = [];
-        const reel = {
-          ...shared,
-          id: crypto.randomBytes(8).toString("hex"),
-          type: "REELS",
-          caption: String(b.caption ?? "").slice(0, 2200),
-          userTags: names(b.userTags, 20, notes, "Tag people"),
-          collaborators: names(b.collaborators, 3, notes, "Collaborators"),
-          thumbOffsetMs: Number(b.coverSeconds) > 0 ? Math.round(Number(b.coverSeconds) * 1000) : 0,
-        };
-        if (!(Array.isArray(b.userTags) && b.userTags.length)) throw new InputError("Tag people: the dancer must be tagged (their @username).");
-        if (notes.length) reel.notes = notes;
-        const story = {...shared, id: crypto.randomBytes(8).toString("hex"), type: "STORIES", caption: "", userTags: [], collaborators: [], thumbOffsetMs: 0, reel: reel.id};
-        // when (both at the same time)
-        let at;
-        if (b.when === "now") at = new Date().toISOString();
-        else if (b.when === "slot" || !b.when) {
-          const jobs = await allJobs();
-          const taken = new Set(jobs.filter((j) => j.status === "scheduled" || j.status === "publishing").map((j) => Date.parse(j.publishAt)));
-          [at] = freeSlots(taken, 1);
-          if (!at) return send(res, 400, {error: `Every posting time in the next ${MAX_DAYS} days is taken.`});
-        } else {
-          const t = Date.parse(b.when);
-          if (!Number.isFinite(t) || t < Date.now() + 60000 || t > Date.now() + MAX_DAYS * 86400000) return send(res, 400, {error: `Pick a time between now and ${MAX_DAYS} days ahead.`});
-          at = new Date(t).toISOString();
-        }
-        reel.publishAt = story.publishAt = at;
-        reel.video = await putObject(randomName("videos", "mp4"), fs.readFileSync(outFile), "video/mp4");
-        story.video = await putObject(randomName("videos", "mp4"), await cutStory(outFile), "video/mp4");
-        story.caption = `(Story, first ${STORY_SECONDS} s)`; // only shown in the panel's list; Stories get no caption
-        const jobs = [reel, story];
-        for (const job of jobs) await putJson(jobName(job.id), job);
-        log(`jobs ${reel.id} (Reel) + ${story.id} (Story) at ${at}`);
-
-        if (b.when === "now") {
-          const done = [];
-          for (const job of jobs) done.push(await run(job.id)); // one after the other: each waits for Instagram to process its video
-          return send(res, 200, {jobs: done});
-        }
-        for (const job of jobs) {
-          job.task = await createTask({queue: QUEUE, location: LOCATION, url: `${process.env.SERVICE_URL || `https://${req.headers.host}`}/api/instagram/run?job=${job.id}`, at, headers: {"X-Task-Key": TASK_KEY}});
-          await putJson(jobName(job.id), job);
-        }
+        const jobs = await scheduleReelAndStory(outFile, b, process.env.SERVICE_URL || `https://${req.headers.host}`);
         return send(res, 200, {jobs});
       }
 
