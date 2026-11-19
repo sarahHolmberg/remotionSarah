@@ -15,6 +15,13 @@ declare const __APP_VERSION__: string;
 type Task = {taskId: string; name: string; transcript: string; durationSeconds: number};
 type Step = "loading" | "empty" | "copy" | "paste" | "manual" | "fix" | "ready" | "sending" | "error";
 const COUNTDOWN = 3;
+// the AI apps: after copying, one tap opens the chosen one (on a phone the link opens its app when it's installed)
+const AIS = [
+  {name: "ChatGPT", url: "https://chatgpt.com/"},
+  {name: "Claude", url: "https://claude.ai/new"},
+  {name: "Gemini", url: "https://gemini.google.com/app"},
+];
+const AI_KEY = "parrot-ai";
 
 // one id per phone, so a task opened here stays held for this phone (and not for another person) for a while
 const client = (() => {
@@ -59,6 +66,21 @@ const Parrot = () => {
   const [message, setMessage] = useState("");
   const [toast, setToast] = useState("");
   const timer = useRef<number | null>(null);
+  const [ai, setAi] = useState(() => {
+    try {
+      return AIS.find((a) => a.name === localStorage.getItem(AI_KEY)) ?? AIS[0];
+    } catch {
+      return AIS[0];
+    }
+  });
+  const pickAi = (a: (typeof AIS)[number]) => {
+    setAi(a);
+    try {
+      localStorage.setItem(AI_KEY, a.name);
+    } catch {
+      /* remembered for this visit only */
+    }
+  };
 
   const say = (t: string) => {
     setToast(t);
@@ -222,9 +244,15 @@ const Parrot = () => {
               {step === "copy" && <p className="say">Copy it, then paste it into your AI app (ChatGPT, Claude, Gemini…).</p>}
               {step === "paste" && (
                 <>
-                  <p className="say">When the AI answers, copy its whole answer and come back.</p>
+                  <p className="say">Paste it into {ai.name}. When it answers, copy its whole answer and come back.</p>
+                  <a className="open" href={ai.url} target="_blank" rel="noopener noreferrer">
+                    Open {ai.name} ↗
+                  </a>
                   <div className="row">
-                    <button className="link" onClick={copyForAI}>Copy for AI again</button>
+                    {AIS.filter((a) => a.name !== ai.name).map((a) => (
+                      <button key={a.name} className="link" onClick={() => pickAi(a)}>Use {a.name}</button>
+                    ))}
+                    <button className="link" onClick={copyForAI}>Copy again</button>
                   </div>
                 </>
               )}

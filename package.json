@@ -1,6 +1,6 @@
 {
   "name": "remotion-starter",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "private": true,
   "scripts": {
     "start": "remotion studio",
