@@ -5,6 +5,7 @@
 //   2. Paste answer   -> the AI's JSON is read from the clipboard and checked right away (rules + the video's length)
 //   3. Send           -> sends by itself after a 3-second countdown (Cancel stops it); the next task comes up
 // When the AI's answer has problems: "Copy fix request" copies a ready-made message to paste back into the same chat.
+// The transcript, the script and the problems are never shown on screen: they only travel through the clipboard.
 /// <reference types="vite/client" />
 import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
@@ -62,7 +63,6 @@ const Parrot = () => {
   const [problems, setProblems] = useState<string[]>([]);
   const [spec, setSpec] = useState<Spec | null>(null);
   const [left, setLeft] = useState(COUNTDOWN);
-  const [manual, setManual] = useState("");
   const [message, setMessage] = useState("");
   const [toast, setToast] = useState("");
   const timer = useRef<number | null>(null);
@@ -92,7 +92,6 @@ const Parrot = () => {
     setStep("loading");
     setProblems([]);
     setSpec(null);
-    setManual("");
     try {
       const r = await fetch(`/parrot/api/next?client=${client}`, {cache: "no-store"});
       const d = await r.json();
@@ -171,7 +170,8 @@ const Parrot = () => {
       say(`Sent ${task.name} 🦜`);
       next();
     } catch (e) {
-      setMessage(`Couldn't send: ${(e as Error).message}`);
+      console.error("[Parrot] send failed", e);
+      setMessage("Couldn't send it. Check your connection and try again.");
       setStep("error");
     }
   };
@@ -199,13 +199,11 @@ const Parrot = () => {
   };
 
   const stepNo = step === "copy" ? 1 : step === "ready" || step === "sending" ? 3 : 2;
-  const captions = spec?.captions.length ?? 0;
 
   // the one big button for each step
   const button =
     step === "copy" ? <button className="big" onClick={copyForAI}>Copy for AI</button>
     : step === "paste" ? <button className="big" onClick={pasteAnswer}>Paste the answer</button>
-    : step === "manual" ? <button className="big" onClick={() => take(manual)} disabled={!manual.trim()}>Check</button>
     : step === "fix" ? <button className="big alt" onClick={copyFix}>Copy fix request</button>
     : step === "ready" ? <button className="big" onClick={send}>Send now ({left})</button>
     : step === "sending" ? <button className="big" disabled><span className="ring" />Sending</button>
@@ -258,18 +256,28 @@ const Parrot = () => {
               )}
               {step === "manual" && (
                 <>
-                  <p className="say">Paste the AI's answer here:</p>
-                  <textarea value={manual} onChange={(e) => setManual(e.target.value)} placeholder="Long-press, then Paste" autoFocus spellCheck={false} />
+                  <p className="say">Long-press the box below and tap Paste.</p>
+                  {/* the pasted answer is never shown: it is checked the moment it lands, and the box empties again */}
+                  <textarea
+                    className="blind"
+                    value=""
+                    onChange={(e) => e.target.value.trim() && take(e.target.value)}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const t = e.clipboardData.getData("text");
+                      if (t.trim()) take(t);
+                    }}
+                    placeholder="Paste here"
+                    aria-label="Paste the AI's answer here"
+                    autoFocus
+                    spellCheck={false}
+                  />
                 </>
               )}
               {step === "fix" && (
                 <>
-                  <p className="say">The answer isn't quite right yet.</p>
-                  <ul className="errs">
-                    {problems.slice(0, 3).map((p, i) => <li key={i}>{p}</li>)}
-                    {problems.length > 3 && <li>…and {problems.length - 3} more</li>}
-                  </ul>
-                  <p className="hint">Copy the fix request, paste it into the same chat, then copy the new answer.</p>
+                  <p className="say">The AI's answer needs a fix.</p>
+                  <p className="hint">Tap Copy fix request, paste it into the same chat, then copy the new answer and come back.</p>
                   <div className="row">
                     <button className="link" onClick={() => setStep("paste")}>Paste a different answer</button>
                   </div>
@@ -278,9 +286,7 @@ const Parrot = () => {
               {(step === "ready" || step === "sending") && (
                 <>
                   <p className="say ok">✓ Looks good</p>
-                  <p className="hint">
-                    {captions} caption{captions === 1 ? "" : "s"} · tags @{String((spec as any)?.username ?? "").replace(/^@/, "")}
-                  </p>
+                  <p className="hint">{step === "ready" ? "Sending by itself in a moment." : "Sending…"}</p>
                   {step === "ready" && (
                     <div className="row">
                       <button className="link" onClick={cancel}>Cancel</button>
