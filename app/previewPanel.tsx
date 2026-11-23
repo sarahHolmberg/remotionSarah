@@ -16,6 +16,7 @@ import {PostToInstagram} from "./instagram";
 import {GridOverlay} from "./grid";
 import {BubbleEditor} from "./bubbles";
 import {streamRender, uploadFile} from "./pipeline";
+import {mailRenderStarted} from "./mail";
 
 const GRID_KEY = "comic-show-grid"; // the grid checkbox is remembered in the browser
 
@@ -239,6 +240,7 @@ export const Preview = ({embedded = false}: {embedded?: boolean}) => {
 
       setExportMsg("Rendering... (the first time can take a while)");
       console.log("[Preview] export: starting the render");
+      mailRenderStarted("Editor, Export video", {Video: spec.video.file, Username: spec.username ?? ""});
       await streamRender(spec, (l) => setRenderLog((old) => [...old.slice(-11), l]));
       console.log("[Preview] export: render done, downloading comic.mp4");
       setExportMsg("Done. Downloading comic.mp4");

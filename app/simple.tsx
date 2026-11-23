@@ -9,6 +9,7 @@ import {applyDefaults, validateAgainstVideo, validateSpec, type Spec} from "../s
 import {CHANNEL, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {streamRender, uploadFile} from "./pipeline";
 import {InboxBar} from "./inbox";
+import {mailRenderStarted} from "./mail";
 import {VersionTag} from "./version";
 
 const STEPS = ["Preparing", "Composing", "Finishing"];
@@ -139,6 +140,7 @@ export const SimpleView = ({visible, onAdvanced}: {visible: boolean; onAdvanced:
 
         // 2. Composing (25-92%): the render, its log says how far it is
         at(1, 25);
+        mailRenderStarted("Studio, Create", {Video: source.name, Username: out.username ?? ""});
         await streamRender(out, (l) => {
           const m = /(\d{1,3})%/.exec(l);
           if (m) at(1, 25 + Number(m[1]) * 0.67);

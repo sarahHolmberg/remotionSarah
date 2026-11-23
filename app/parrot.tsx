@@ -11,6 +11,7 @@ import {useEffect, useRef, useState} from "react";
 import {createRoot} from "react-dom/client";
 import PROMPT from "../prompts/transcript-to-json.md?raw";
 import {applyDefaults, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
+import {mailRenderStarted} from "./mail";
 
 declare const __APP_VERSION__: string;
 type Task = {taskId: string; name: string; transcript: string; durationSeconds: number};
@@ -167,6 +168,7 @@ const Parrot = () => {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error ?? `the server answered ${r.status}`);
       buzz();
+      mailRenderStarted("Parrot, Send", {Task: task.name, "Task id": task.taskId}); // the server starts rendering it now
       say(`Sent ${task.name} 🦜`);
       next();
     } catch (e) {
@@ -214,10 +216,16 @@ const Parrot = () => {
   return (
     <>
       {toast && <div className="toast" role="status">{toast}</div>}
-      <header className="top">
-        <span className="brand">🦜 Parrot</span>
-        <span className="count">{waiting ? `${waiting} waiting` : ""}</span>
-      </header>
+      <div className="desk">
+        <div className="win">
+          {/* Windows XP window: blue title bar with the waiting count, beige body */}
+          <div className="title">
+            <span className="ticon" aria-hidden="true">🦜</span>
+            <span className="ttext">Parrot</span>
+            <span className="count">{waiting ? `${waiting} waiting` : ""}</span>
+            <span className="cb" aria-hidden="true">_</span>
+            <span className="cb x" aria-hidden="true">✕</span>
+          </div>
       <main className="main">
         {step === "loading" ? (
           <div className="center"><p className="hint">Finding the next one…</p></div>
@@ -304,6 +312,8 @@ const Parrot = () => {
         )}
         <p className="ver">v{__APP_VERSION__}</p>
       </main>
+        </div>
+      </div>
       {button && <div className="dock">{button}</div>}
     </>
   );

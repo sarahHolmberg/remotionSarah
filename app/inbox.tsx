@@ -2,6 +2,7 @@
 // NEW FILE: the bar at the top of the comic editor: the oldest video link the grid player sent (server/inbox.mjs),
 // i.e. the video being worked on now. Click it to open/download; "Done → next" removes it and shows the next one.
 import {useEffect, useState} from "react";
+import {mailRenderStarted} from "./mail";
 
 type Item = {id: string; url: string; title: string; receivedAt: string};
 type Task = {taskId: string; name: string; status: string; publishAt?: string; error?: string};
@@ -24,7 +25,9 @@ const TaskLine = () => {
   const count = (s: string) => tasks.filter((t) => t.status === s).length;
   const summary = ["needs_script", "queued", "making", "scheduled"].filter(count).map((s) => `${count(s)} ${LABEL[s]}`).join(" · ");
   const retry = async (id: string) => {
-    await fetch(`/api/tasks/${encodeURIComponent(id)}/retry`, {method: "POST"}).catch(() => undefined);
+    const r = await fetch(`/api/tasks/${encodeURIComponent(id)}/retry`, {method: "POST"}).catch(() => null);
+    const d = await r?.json().catch(() => null);
+    if (d?.status === "queued") mailRenderStarted("Editor, Retry", {Task: tasks?.find((t) => t.taskId === id)?.name ?? id, "Task id": id});
     void load();
   };
   return (

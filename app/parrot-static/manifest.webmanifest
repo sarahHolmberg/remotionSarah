@@ -4,7 +4,14 @@
   "start_url": "/parrot/",
   "scope": "/parrot/",
   "display": "standalone",
-  "background_color": "#0f9d75",
-  "theme_color": "#0f9d75",
-  "icons": [{"src": "/parrot/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]
+  "background_color": "#245edb",
+  "theme_color": "#245edb",
+  "icons": [
+    {
+      "src": "/parrot/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }
