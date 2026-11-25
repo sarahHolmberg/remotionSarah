@@ -6,6 +6,7 @@
 import {useEffect, useState} from "react";
 import {mailRenderStarted} from "./mail";
 import {VersionTag} from "./version";
+import {apiFetch, CopyErrorsButton} from "./errors";
 
 type Task = {taskId: string; name: string; status: string; receivedAt: string; scriptAt?: string; doneAt?: string; publishAt?: string; permalink?: string; error?: string; durationSeconds?: number};
 
@@ -67,7 +68,7 @@ export const TaskBoard = ({onStudio}: {onStudio: () => void}) => {
   const [at, setAt] = useState("");
 
   const load = () =>
-    fetch("/api/tasks", {cache: "no-store"})
+    apiFetch("/api/tasks", {cache: "no-store"}, "Task board: load the tasks")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`the server answered ${r.status}`))))
       .then((d) => {
         setTasks(d.tasks ?? []);
@@ -83,7 +84,7 @@ export const TaskBoard = ({onStudio}: {onStudio: () => void}) => {
   }, []);
 
   const retry = async (t: Task) => {
-    const r = await fetch(`/api/tasks/${encodeURIComponent(t.taskId)}/retry`, {method: "POST"}).catch(() => null);
+    const r = await apiFetch(`/api/tasks/${encodeURIComponent(t.taskId)}/retry`, {method: "POST"}, "Task board: retry").catch(() => null);
     const d = await r?.json().catch(() => null);
     if (d?.status === "queued") mailRenderStarted("Editor, Retry", {Task: t.name, "Task id": t.taskId});
     void load();
@@ -114,7 +115,11 @@ export const TaskBoard = ({onStudio}: {onStudio: () => void}) => {
             Refresh
           </button>
         </div>
-        {msg && <div className="note err" style={{padding: "0 12px"}}>{msg}</div>}
+        {msg && (
+          <div className="note err" style={{padding: "6px 12px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap"}}>
+            {msg} <CopyErrorsButton className="btn" />
+          </div>
+        )}
         <div className="body cols2">
           <section className="group">
             <span className="gtitle">Incomplete ({open.length})</span>
@@ -146,7 +151,10 @@ export const TaskBoard = ({onStudio}: {onStudio: () => void}) => {
           </section>
         </div>
         <div className="sbar">
-          <span>{at ? `Updated ${at} · checks every 15 s` : ""}</span>
+          <span>
+            {at ? `Updated ${at} · checks every 15 s · ` : ""}
+            <CopyErrorsButton className="linkbtn" label="Copy error log" />
+          </span>
           <VersionTag style={{fontSize: 11}} />
         </div>
       </div>

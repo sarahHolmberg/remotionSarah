@@ -10,6 +10,7 @@ import {CHANNEL, savePicture, saveVideo, STORE_KEY} from "./shared";
 import {streamRender, uploadFile} from "./pipeline";
 import {InboxBar} from "./inbox";
 import {mailRenderStarted} from "./mail";
+import {CopyErrorsButton, logError} from "./errors";
 import {VersionTag} from "./version";
 
 const STEPS = ["Preparing", "Composing", "Finishing"];
@@ -159,7 +160,7 @@ export const SimpleView = ({visible, onAdvanced}: {visible: boolean; onAdvanced:
       if (d.error) throw new Error(d.error);
       setRun({step: 3, pct: 100, doneAt: d.jobs?.[0]?.publishAt ?? ""});
     } catch (e) {
-      console.error("[Simple] failed", e);
+      logError(`Studio: ${STEPS[step].toLowerCase()}`, e);
       setRun({step, pct: 0, error: (e as Error).message});
     }
   };
@@ -254,6 +255,7 @@ export const SimpleView = ({visible, onAdvanced}: {visible: boolean; onAdvanced:
                         <summary>Details</summary>
                         <span className="hint">{run.error}</span>
                       </details>
+                      <CopyErrorsButton className="btn" />
                       <button className="btn primary" onClick={start}>
                         Try again
                       </button>

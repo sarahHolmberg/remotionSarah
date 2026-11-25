@@ -12,6 +12,9 @@ import {createRoot} from "react-dom/client";
 import PROMPT from "../prompts/transcript-to-json.md?raw";
 import {applyDefaults, validateAgainstVideo, validateSpec, type Spec} from "../src/spec";
 import {mailRenderStarted} from "./mail";
+import {apiFetch, CopyErrorsButton, hasErrors, installErrorLog, logError} from "./errors";
+
+installErrorLog();
 
 declare const __APP_VERSION__: string;
 type Task = {taskId: string; name: string; transcript: string; durationSeconds: number};
@@ -65,6 +68,7 @@ const Parrot = () => {
   const [spec, setSpec] = useState<Spec | null>(null);
   const [left, setLeft] = useState(COUNTDOWN);
   const [message, setMessage] = useState("");
+  const [relogin, setRelogin] = useState(false); // the password box has to come back: "Try again" reloads the page
   const [toast, setToast] = useState("");
   const timer = useRef<number | null>(null);
   const [ai, setAi] = useState(() => {
@@ -89,20 +93,36 @@ const Parrot = () => {
   };
   const buzz = () => navigator.vibrate?.(40);
 
+  // a failed answer -> a plain message (the details are in the error log, see "Copy error details")
+  const failMessage = (status: number | null, what: string) => {
+    setRelogin(status === 401);
+    if (status === null) return `${what}: the server can't be reached right now.`;
+    if (status === 401) return "Your login has run out. Tap Try again and log in.";
+    if (status >= 500) return `${what}: the server had a problem (${status}).`;
+    return `${what}: the server said no (${status}).`;
+  };
+
   const next = async () => {
     setStep("loading");
     setProblems([]);
     setSpec(null);
     try {
-      const r = await fetch(`/parrot/api/next?client=${client}`, {cache: "no-store"});
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error ?? r.status);
+      const r = await apiFetch(`/parrot/api/next?client=${client}`, {cache: "no-store"}, "Parrot: load the next task").catch(() => null);
+      if (!r || !r.ok) {
+        setMessage(failMessage(r ? r.status : null, "Couldn't load the next one"));
+        return setStep("error");
+      }
+      const d = await r.json().catch((e) => {
+        logError("Parrot: read the next task", e);
+        throw e;
+      });
       setWaiting(d.waiting);
       setHeld(d.held ?? 0);
       setTask(d.task);
       setStep(d.task ? "copy" : "empty");
     } catch (e) {
-      setMessage(`Can't reach the server (${(e as Error).message}).`);
+      logError("Parrot: next task", e);
+      setMessage(failMessage(null, "Couldn't load the next one"));
       setStep("error");
     }
   };
@@ -121,7 +141,9 @@ const Parrot = () => {
       buzz();
       say("Copied: paste it into your AI");
       setStep("paste");
-    } catch {
+    } catch (e) {
+      logError("Parrot: copy for AI", e);
+      setRelogin(false);
       setMessage("This browser didn't allow copying. Try again, or open Parrot in Safari or Chrome.");
       setStep("error");
     }
@@ -144,7 +166,8 @@ const Parrot = () => {
       const text = await navigator.clipboard.readText();
       if (!text.trim()) return say("The clipboard is empty: copy the AI's answer first");
       take(text);
-    } catch {
+    } catch (e) {
+      logError("Parrot: read the clipboard (the paste box is shown instead)", e);
       setStep("manual"); // reading the clipboard isn't allowed here: paste into a box instead
     }
   };
@@ -164,16 +187,18 @@ const Parrot = () => {
     if (timer.current) window.clearInterval(timer.current);
     setStep("sending");
     try {
-      const r = await fetch(`/parrot/api/script?task=${encodeURIComponent(task.taskId)}&client=${client}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(applyDefaults(spec))});
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error ?? `the server answered ${r.status}`);
+      const r = await apiFetch(`/parrot/api/script?task=${encodeURIComponent(task.taskId)}&client=${client}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(applyDefaults(spec))}, "Parrot: send the script").catch(() => null);
+      if (!r || !r.ok) {
+        setMessage(failMessage(r ? r.status : null, "Couldn't send it"));
+        return setStep("error");
+      }
       buzz();
       mailRenderStarted("Parrot, Send", {Task: task.name, "Task id": task.taskId}); // the server starts rendering it now
       say(`Sent ${task.name} 🦜`);
       next();
     } catch (e) {
-      console.error("[Parrot] send failed", e);
-      setMessage("Couldn't send it. Check your connection and try again.");
+      logError("Parrot: send", e);
+      setMessage(failMessage(null, "Couldn't send it"));
       setStep("error");
     }
   };
@@ -195,7 +220,7 @@ const Parrot = () => {
 
   const skip = async () => {
     if (!task) return;
-    await fetch(`/parrot/api/skip?task=${encodeURIComponent(task.taskId)}&client=${client}`, {method: "POST"}).catch(() => undefined);
+    await apiFetch(`/parrot/api/skip?task=${encodeURIComponent(task.taskId)}&client=${client}`, {method: "POST"}, "Parrot: skip").catch(() => undefined);
     say("Skipped: it goes to the back of the line");
     next();
   };
@@ -209,7 +234,7 @@ const Parrot = () => {
     : step === "fix" ? <button className="big alt" onClick={copyFix}>Copy fix request</button>
     : step === "ready" ? <button className="big" onClick={send}>Send now ({left})</button>
     : step === "sending" ? <button className="big" disabled><span className="ring" />Sending</button>
-    : step === "error" ? <button className="big" onClick={next}>Try again</button>
+    : step === "error" ? <button className="big" onClick={() => (relogin ? location.reload() : next())}>Try again</button>
     : step === "empty" ? <button className="big" onClick={next}>Check again</button>
     : null;
 
@@ -239,6 +264,7 @@ const Parrot = () => {
           <div className="center">
             <div className="emoji">🙈</div>
             <p className="say">{message}</p>
+            <CopyErrorsButton />
           </div>
         ) : (
           task && (
@@ -310,7 +336,15 @@ const Parrot = () => {
             </div>
           )
         )}
-        <p className="ver">v{__APP_VERSION__}</p>
+        <p className="ver">
+          v{__APP_VERSION__}
+          {hasErrors() && step !== "error" && (
+            <>
+              {" · "}
+              <CopyErrorsButton label="Copy error log" />
+            </>
+          )}
+        </p>
       </main>
         </div>
       </div>

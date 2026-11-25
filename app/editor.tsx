@@ -12,6 +12,9 @@ import {DEFAULTS as MASCOT_DEFAULTS, SLIDERS as MASCOT_SLIDERS} from "../src/mas
 import {InboxBar} from "./inbox";
 import {SimpleView} from "./simple";
 import {TaskBoard} from "./board";
+import {installErrorLog} from "./errors";
+
+installErrorLog();
 
 console.log("[Editor] 1. file loaded");
 

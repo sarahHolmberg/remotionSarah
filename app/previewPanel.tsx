@@ -17,6 +17,7 @@ import {GridOverlay} from "./grid";
 import {BubbleEditor} from "./bubbles";
 import {streamRender, uploadFile} from "./pipeline";
 import {mailRenderStarted} from "./mail";
+import {CopyErrorsButton, logError} from "./errors";
 
 const GRID_KEY = "comic-show-grid"; // the grid checkbox is remembered in the browser
 
@@ -250,7 +251,7 @@ export const Preview = ({embedded = false}: {embedded?: boolean}) => {
       a.download = "comic.mp4";
       a.click();
     } catch (e) {
-      console.error("[Preview] export failed", e);
+      logError("Editor: export video", e);
       setExportMsg(`Export failed: ${(e as Error).message}`);
     } finally {
       setExporting(false);
@@ -284,6 +285,7 @@ export const Preview = ({embedded = false}: {embedded?: boolean}) => {
           {exporting ? "Exporting..." : "Export video"}
         </button>
         {exportMsg && <span style={{fontSize: 13}}>{exportMsg}</span>}
+        {exportMsg.startsWith("Export failed") && <CopyErrorsButton className="" />}
         <label style={{display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer"}}>
           <input type="checkbox" checked={showGrid} onChange={(e) => toggleGrid(e.target.checked)} />
           Grid {spec.grid.size}x{spec.grid.size} (A1 to {String.fromCharCode(64 + spec.grid.size)}
