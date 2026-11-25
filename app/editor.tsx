@@ -11,6 +11,7 @@ import {Boundary, Preview} from "./previewPanel";
 import {DEFAULTS as MASCOT_DEFAULTS, SLIDERS as MASCOT_SLIDERS} from "../src/mascot/mascot";
 import {InboxBar} from "./inbox";
 import {SimpleView} from "./simple";
+import {TaskBoard} from "./board";
 
 console.log("[Editor] 1. file loaded");
 
@@ -258,7 +259,7 @@ const Editor = ({onSimple}: {onSimple: () => void}) => {
             <span className="ticon" aria-hidden="true" />
             <span className="ttext">Comic editor</span>
             <button className="btn" onClick={onSimple} style={{minHeight: 30, padding: "2px 10px", fontSize: 13}}>
-              ← Simple view
+              ← Tasks
             </button>
           </div>
 
@@ -476,12 +477,15 @@ const Editor = ({onSimple}: {onSimple: () => void}) => {
 
 const rootEl = document.getElementById("root");
 console.log(`[Editor] 0. mounting (root element ${rootEl ? "found" : "MISSING"})`);
-// The page starts in the simple view (app/simple.tsx); "See background" shows the full editor + preview, "Simple view" goes back.
+// "See background" (in the side pane) shows the full editor + preview; "← Tasks" goes back to the board.
 // The simple view stays mounted (only hidden), so what was typed there is kept while the full view is open.
 // "See background" first asks the server for the background password: the browser shows its own login box
 // (any username; the password is BACKGROUND_PASSWORD on the server, see server/background.mjs)
+// The page opens on the task board (app/board.tsx). "Studio ▸" slides in the side pane with everything from before:
+// the Studio (make one by hand) and, behind its password, the full editor ("See background").
 const App = () => {
   const [advanced, setAdvanced] = useState(false);
+  const [pane, setPane] = useState(false);
   const unlock = async () => {
     try {
       const r = await fetch("/background-auth/check", {cache: "no-store"});
@@ -494,10 +498,18 @@ const App = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [advanced]);
+  if (advanced) return <Editor onSimple={() => setAdvanced(false)} />;
   return (
     <>
-      <SimpleView visible={!advanced} onAdvanced={unlock} />
-      {advanced && <Editor onSimple={() => setAdvanced(false)} />}
+      <TaskBoard onStudio={() => setPane(true)} />
+      {/* the side pane: stays mounted (only hidden) so what was typed in the Studio is kept */}
+      <div className={`scrim${pane ? " on" : ""}`} onClick={() => setPane(false)} aria-hidden="true" />
+      <aside className={`pane${pane ? " on" : ""}`} aria-hidden={!pane}>
+        <button className="btn paneclose" onClick={() => setPane(false)}>
+          ◂ Tasks
+        </button>
+        <SimpleView visible onAdvanced={unlock} />
+      </aside>
     </>
   );
 };

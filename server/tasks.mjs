@@ -290,8 +290,13 @@ export const makeTasks = ({root, publicDir, distDir, render, authorized}) => {
         return res.end("Password needed.");
       }
       if (req.method === "GET" && p === "/api/tasks") {
-        const list = (await all()).sort((a, b) => b.order - a.order).slice(0, 30);
-        return send(res, 200, {tasks: await Promise.all(list.map(async (t) => ({...publicStatus(await refresh(t)), name: t.name, createdAt: t.createdAt})))});
+        // every unfinished task (oldest first), and the 40 latest finished ones (newest first): the editor's task board
+        const ts = await Promise.all((await all()).map(refresh));
+        const done = (t) => t.status === "scheduled" || t.status === "posted";
+        const open = ts.filter((t) => !done(t)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const finished = ts.filter(done).sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")).slice(0, 40);
+        const card = (t) => ({...publicStatus(t), name: t.name, receivedAt: t.createdAt, scriptAt: t.scriptAt, doneAt: t.doneAt, durationSeconds: t.durationSeconds});
+        return send(res, 200, {tasks: [...open, ...finished].map(card), counts: {open: open.length, finished: ts.filter(done).length}});
       }
       const retry = /^\/api\/tasks\/([A-Za-z0-9_-]{1,64})\/retry$/.exec(p);
       if (req.method === "POST" && retry) {
