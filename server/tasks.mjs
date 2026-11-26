@@ -201,6 +201,9 @@ export const makeTasks = ({root, publicDir, distDir, render, authorized}) => {
     send(res, 202, {ok: true, code: "ACCEPTED", taskId, status: t.status});
   };
 
+  // queued or rendering for longer than a render can take: something stopped it (the editor offers Retry)
+  const isStuck = (t) => (t.status === "queued" || t.status === "making") && Date.now() - Date.parse(t.startedAt ?? t.scriptAt ?? t.createdAt) > 15 * 60000;
+
   const all = async () => (await Promise.all((await store.list()).map((id) => store.get(id)))).filter(Boolean);
 
   // ---- Parrot ----
@@ -295,14 +298,14 @@ export const makeTasks = ({root, publicDir, distDir, render, authorized}) => {
         const done = (t) => t.status === "scheduled" || t.status === "posted";
         const open = ts.filter((t) => !done(t)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
         const finished = ts.filter(done).sort((a, b) => (b.doneAt ?? "").localeCompare(a.doneAt ?? "")).slice(0, 40);
-        const card = (t) => ({...publicStatus(t), name: t.name, receivedAt: t.createdAt, scriptAt: t.scriptAt, doneAt: t.doneAt, durationSeconds: t.durationSeconds});
+        const card = (t) => ({...publicStatus(t), name: t.name, receivedAt: t.createdAt, scriptAt: t.scriptAt, doneAt: t.doneAt, durationSeconds: t.durationSeconds, stuck: isStuck(t)});
         return send(res, 200, {tasks: [...open, ...finished].map(card), counts: {open: open.length, finished: ts.filter(done).length}});
       }
       const retry = /^\/api\/tasks\/([A-Za-z0-9_-]{1,64})\/retry$/.exec(p);
       if (req.method === "POST" && retry) {
         const t = await store.get(retry[1]);
-        if (!t || t.status !== "failed") return fail(res, 409, "NOT_FAILED", "Only a failed task can be retried.");
-        Object.assign(t, {status: t.script ? "queued" : "needs_script", error: undefined});
+        if (!t || !(t.status === "failed" || isStuck(t))) return fail(res, 409, "NOT_FAILED", "Only a failed task, or one stuck rendering for over 15 minutes, can be retried.");
+        Object.assign(t, {status: t.script ? "queued" : "needs_script", error: undefined, startedAt: undefined, scriptAt: t.script ? new Date().toISOString() : t.scriptAt});
         await store.put(t.taskId, t);
         if (t.script) await enqueue(t);
         return send(res, 200, publicStatus(t));

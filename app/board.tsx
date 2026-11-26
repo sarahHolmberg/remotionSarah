@@ -8,7 +8,7 @@ import {mailRenderStarted} from "./mail";
 import {VersionTag} from "./version";
 import {apiFetch, CopyErrorsButton} from "./errors";
 
-type Task = {taskId: string; name: string; status: string; receivedAt: string; scriptAt?: string; doneAt?: string; publishAt?: string; permalink?: string; error?: string; durationSeconds?: number};
+type Task = {taskId: string; name: string; status: string; receivedAt: string; scriptAt?: string; doneAt?: string; publishAt?: string; permalink?: string; error?: string; durationSeconds?: number; stuck?: boolean};
 
 const when = (iso?: string) => (iso ? new Date(iso).toLocaleString("en-GB", {timeZone: "Europe/Stockholm", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "");
 const BADGE: Record<string, [string, string]> = {
@@ -46,7 +46,15 @@ const Card = ({t, onRetry}: {t: Task; onRetry: (t: Task) => void}) => {
           )}
         </span>
       )}
-      {(t.status === "queued" || t.status === "making") && <span className="hint">Script from Parrot {when(t.scriptAt)}; then it schedules itself.</span>}
+      {(t.status === "queued" || t.status === "making") && !t.stuck && <span className="hint">Script from Parrot {when(t.scriptAt)}; then it schedules itself.</span>}
+      {t.stuck && (
+        <div className="trow">
+          <span className="terr">Stuck: rendering hasn't finished in 15 minutes.</span>
+          <button className="btn" onClick={() => onRetry(t)}>
+            Retry
+          </button>
+        </div>
+      )}
       {t.status === "failed" && (
         <div className="trow">
           <span className="terr" title={t.error}>

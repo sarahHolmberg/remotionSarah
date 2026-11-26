@@ -37,8 +37,20 @@ export const putObject = async (name, body, contentType) => {
   await google(`https://storage.googleapis.com/upload/storage/v1/b/${BUCKET}/o?uploadType=media&name=${encodeURIComponent(name)}`, {method: "POST", headers: {"Content-Type": contentType}, body});
   return name;
 };
-export const getJson = async (name) => (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o/${encodeURIComponent(name)}?alt=media`)).json();
-export const putJson = (name, data) => putObject(name, JSON.stringify(data, null, 2), "application/json");
+// The bucket is publicly readable (Instagram fetches the videos from it), and Google caches publicly readable files for
+// up to an hour. The small JSON records (tasks, jobs, profiles, links) change all the time, so: they are written with
+// "Cache-Control: no-store", and read with a unique quotaUser (a standard Google API parameter) so a cached copy is
+// never used. Without this, a task saved as "queued" was read back as the old "needs_script" and nothing happened.
+const fresh = () => `&quotaUser=r${crypto.randomBytes(6).toString("hex")}`;
+export const getJson = async (name) => (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o/${encodeURIComponent(name)}?alt=media${fresh()}`, {headers: {"Cache-Control": "no-cache"}})).json();
+export const putJson = async (name, data) => {
+  const boundary = `b${crypto.randomBytes(8).toString("hex")}`;
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({name, contentType: "application/json", cacheControl: "no-store, max-age=0"})}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data, null, 2)}\r\n--${boundary}--`;
+  await google(`https://storage.googleapis.com/upload/storage/v1/b/${BUCKET}/o?uploadType=multipart`, {method: "POST", headers: {"Content-Type": `multipart/related; boundary=${boundary}`}, body});
+  return name;
+};
 export const deleteObject = (name) => google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o/${encodeURIComponent(name)}`, {method: "DELETE"});
 export const listObjects = async (prefix) => {
   const d = await (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o?prefix=${encodeURIComponent(prefix)}&fields=items(name)`)).json();
@@ -46,7 +58,7 @@ export const listObjects = async (prefix) => {
 };
 
 // a whole file from the bucket, as a Buffer
-export const getObjectBuffer = async (name) => Buffer.from(await (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o/${encodeURIComponent(name)}?alt=media`)).arrayBuffer());
+export const getObjectBuffer = async (name) => Buffer.from(await (await google(`https://storage.googleapis.com/storage/v1/b/${BUCKET}/o/${encodeURIComponent(name)}?alt=media${fresh()}`)).arrayBuffer());
 // everything in the bucket added up, in bytes (used to stay inside the free storage)
 export const bucketBytes = async () => {
   let total = 0, token = "";
