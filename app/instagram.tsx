@@ -86,6 +86,7 @@ export const PostToInstagram = ({exported, seconds, startCaption, startTag}: {ex
         <>
           <span style={{opacity: 0.7}}>Posts both: a Reel (the whole video) and a Story (the first 10 seconds; Instagram's API gives Stories no caption or tags).</span>
           <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={4} maxLength={2200} placeholder="Caption, @mentions work here" style={input} />
+          <span style={{opacity: 0.7}}>A line crediting the dancer (the first person tagged) is added at the top automatically.</span>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tag people (the dancer is required): @stella @noor" style={{...input, outline: list(tags).length ? undefined : "2px solid #ff7a7a"}} />
           <input value={collabs} onChange={(e) => setCollabs(e.target.value)} placeholder="Collaborators (up to 3, they get an invite): @mirrors.dance" style={input} />
           <label style={{display: "flex", gap: 8, alignItems: "center"}}>

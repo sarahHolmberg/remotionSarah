@@ -191,6 +191,25 @@ const names = (list, max, notes, what) => {
   return all.filter((n) => USERNAME.test(n)).slice(0, max);
 };
 
+// ---- THE CREDIT LINE (change here): always at the top of the Reel's caption, before the caption from the script ----
+// One of these is picked for each post (so the posts don't all open with the same sentence); {user} = @username.
+const CREDITS = [
+  "We're crediting the dancer of this video, {user}. Their dancing is the only reason our work is possible. We'd love for you to follow them and see why they mean so much to us.",
+  "All credit for this dance goes to {user}. Without dancers like them, none of what we do would exist. Go follow them and see why we love their work so much.",
+  "This video exists because of {user}, the dancer behind it. Their dance is what makes our work possible, so please give them a follow and see why we're such big fans.",
+  "Credit where it's due: the dancer in this video is {user}. Our work is only possible because of dancers like them. Follow them and you'll see why we love them so much.",
+  "Huge thanks to {user}, the dancer in this video. Their dancing is the reason our work can happen at all. We'd love it if you followed them and saw why they inspire us so much.",
+];
+// the credit line + a blank line + the script's caption (kept within Instagram's 2200 characters; added only once)
+export const withCredit = (caption, username) => {
+  const text = String(caption ?? "").trim();
+  if (!username) return text.slice(0, 2200);
+  const user = `@${String(username).replace(/^@/, "")}`;
+  if (CREDITS.some((c) => text.startsWith(c.split("{user}")[0]))) return text.slice(0, 2200); // already has one
+  const line = CREDITS[crypto.randomInt(CREDITS.length)].replace("{user}", user);
+  return (text ? `${line}\n\n${text}` : line).slice(0, 2200);
+};
+
 // Schedule one finished video as a Reel (whole video, caption, tags) + a Story (first STORY_SECONDS) at the same time.
 // b: {caption, userTags, collaborators, coverSeconds, when: "slot" | "now" | ISO time}. Returns the two jobs.
 // Used by the editor's "Post to Instagram" panel and by the automatic tasks (server/tasks.mjs).
@@ -201,13 +220,14 @@ export const scheduleReelAndStory = async (videoFile, b, baseUrl) => {
     ...shared,
     id: crypto.randomBytes(8).toString("hex"),
     type: "REELS",
-    caption: String(b.caption ?? "").slice(0, 2200),
+    caption: "", // set just below: the credit line first, then the caption
     userTags: names(b.userTags, 20, notes, "Tag people"),
     collaborators: names(b.collaborators, 3, notes, "Collaborators"),
     thumbOffsetMs: Number(b.coverSeconds) > 0 ? Math.round(Number(b.coverSeconds) * 1000) : 0,
   };
   if (!(Array.isArray(b.userTags) && b.userTags.length)) throw new InputError("Tag people: the dancer must be tagged (their @username).");
   if (notes.length) reel.notes = notes;
+  reel.caption = withCredit(b.caption, reel.userTags[0]); // the dancer (first person tagged) is credited at the top
   const story = {...shared, id: crypto.randomBytes(8).toString("hex"), type: "STORIES", caption: "", userTags: [], collaborators: [], thumbOffsetMs: 0, reel: reel.id};
   // when (both at the same time)
   let at;
